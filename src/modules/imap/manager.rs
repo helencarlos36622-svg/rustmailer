@@ -14,7 +14,7 @@ use crate::modules::imap::client::Client;
 use crate::modules::imap::oauth2::OAuth2;
 use crate::modules::imap::session::SessionStream;
 use crate::modules::oauth2::token::OAuth2AccessToken;
-use crate::{decrypt, raise_error};
+use crate::{decrypt, raise_error, rustmailer_version};
 use async_imap::Session;
 use tracing::error;
 
@@ -127,6 +127,18 @@ impl ImapConnectionManager {
                         )
                         .await;
                     return Err(error);
+                }
+                if capabilities.has_str("ID") || capabilities.has_str("id") {
+                    session
+                        .id([
+                            ("name", Some("rustmailer")),
+                            ("version", Some(rustmailer_version!())),
+                            ("vendor", Some("rustmailer")),
+                        ])
+                        .await
+                        .map_err(|e| {
+                            raise_error!(format!("{:#?}", e), ErrorCode::ImapCommandFailed)
+                        })?;
                 }
             }
             Err(error) => {

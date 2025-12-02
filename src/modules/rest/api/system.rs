@@ -20,7 +20,6 @@ pub struct SystemApi;
 #[OpenApi(prefix_path = "/api/v1", tag = "ApiTags::System")]
 impl SystemApi {
     /// Retrieves important system notifications for the RustMail service.
-    ///
     /// This endpoint returns a consolidated view of all critical system notifications including:
     /// - Available version updates
     /// - License expiration warnings
@@ -37,7 +36,6 @@ impl SystemApi {
     }
 
     /// Retrieves an overview of RustMail service metrics.
-    ///
     /// This endpoint returns a consolidated view of all key metrics including:
     /// - IMAP traffic (sent and received)
     /// - Email sent counts (success and failure)
@@ -109,7 +107,6 @@ impl SystemApi {
     }
 
     /// Delete all entries in the disk cache. Requires root permission.
-    ///
     /// The disk cache stores temporary files such as email bodies, attachments,
     /// and outgoing emails waiting to be sent. This operation will clear all
     /// cached data, freeing disk space but removing all temporary content.

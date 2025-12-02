@@ -70,7 +70,7 @@ pub struct Envelope {
     pub thread_name: Option<String>,
     /// The identifier of the thread this email belongs to.
     /// This is computed based on `in_reply_to` / `references` / `message_id`.
-    pub thread_id: u64,
+    pub thread_id: String,
     /// The MIME version of the email (e.g., "1.0"), if specified.
     pub mime_version: Option<String>,
     /// A list of message IDs referenced by this email, used for threading.
@@ -162,7 +162,7 @@ impl From<EmailEnvelopeV3> for Envelope {
             message_id: value.message_id,
             subject: value.subject,
             thread_name: value.thread_name,
-            thread_id: value.thread_id,
+            thread_id: value.thread_id.to_string(),
             mime_version: value.mime_version,
             references: value.references,
             reply_to: value.reply_to,

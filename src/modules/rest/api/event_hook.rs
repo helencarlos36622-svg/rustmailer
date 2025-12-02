@@ -147,7 +147,6 @@ impl EventHookApi {
     }
 
     /// List event hooks (root)
-    ///
     /// Requires root privileges.
     #[oai(
         path = "/event-hook-list",
@@ -284,7 +283,6 @@ impl EventHookApi {
     }
 
     /// Mark a hook task for deletion from queue
-    ///
     /// Initiates asynchronous removal of an event hook task by marking it for deletion.
     /// The task will be:
     /// 1. Immediately marked as "cancelled" in the system

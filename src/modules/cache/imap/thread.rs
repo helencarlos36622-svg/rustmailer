@@ -242,7 +242,7 @@ impl EmailThread {
 
         let results: RustMailerResult<Vec<GmailEnvelope>> =
             join_all(fetch_tasks).await.into_iter().collect();
-        let map = GmailClient::label_map(account.id, account.use_proxy).await?;
+        let map = GmailClient::for_get_label_name(account.id, account.use_proxy).await?;
         let envelopes = results?
             .into_iter()
             .map(|e| e.into_envelope(&map))

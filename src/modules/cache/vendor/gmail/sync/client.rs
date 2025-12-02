@@ -16,6 +16,7 @@ use crate::{
                 history::HistoryList,
                 labels::{Label, LabelDetail, LabelList},
                 messages::{FullMessage, MessageList, MessageMeta, PartBody},
+                thread::{ThreadList, ThreadMessages},
             },
         },
         common::http::HttpClient,
@@ -56,7 +57,7 @@ impl GmailClient {
         Ok(list.labels)
     }
 
-    pub async fn label_map(
+    pub async fn for_get_label_name(
         account_id: u64,
         use_proxy: Option<u64>,
     ) -> RustMailerResult<Arc<AHashMap<String, String>>> {
@@ -74,7 +75,7 @@ impl GmailClient {
         Ok(map)
     }
 
-    pub async fn reverse_label_map(
+    pub async fn for_lookup_label_id(
         account_id: u64,
         use_proxy: Option<u64>,
         skip_cache: bool,
@@ -202,15 +203,19 @@ impl GmailClient {
     pub async fn list_messages(
         account_id: u64,
         use_proxy: Option<u64>,
-        label_id: &str,
+        label_id: Option<&str>,
         page_token: Option<&str>,
         after: Option<&str>,
         max_results: u32,
     ) -> RustMailerResult<MessageList> {
         let mut url = format!(
-            "https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds={}&maxResults={}",
-            label_id, max_results
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults={}",
+            max_results
         );
+
+        if let Some(label_id) = label_id {
+            url.push_str(&format!("&labelIds={}", label_id));
+        }
 
         if let Some(after) = after {
             url.push_str(&format!("&q=after:{}", after));
@@ -233,6 +238,66 @@ impl GmailClient {
             )
         })?;
         Ok(list)
+    }
+
+    pub async fn list_threads_internal(
+        account_id: u64,
+        use_proxy: Option<u64>,
+        label_id: Option<&str>,
+        page_token: Option<&str>,
+        after: Option<&str>,
+        max_results: u64,
+    ) -> RustMailerResult<ThreadList> {
+        let mut url = format!(
+            "https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults={}",
+            max_results
+        );
+
+        if let Some(label_id) = label_id {
+            url.push_str(&format!("&labelIds={}", label_id));
+        }
+
+        if let Some(after) = after {
+            url.push_str(&format!("&q=after:{}", after));
+        }
+
+        if let Some(page_token) = page_token {
+            url.push_str(&format!("&pageToken={}", page_token));
+        }
+
+        let client = HttpClient::new(use_proxy).await?;
+        let access_token = Self::get_access_token(account_id).await?;
+        let value = client.get(url.as_str(), &access_token).await?;
+        let list = serde_json::from_value::<ThreadList>(value).map_err(|e| {
+            raise_error!(
+                format!(
+                    "Failed to deserialize Gmail API response into ThreadList: {:#?}. Possible model mismatch or API change.",
+                    e
+                ),
+                ErrorCode::InternalError
+            )
+        })?;
+        Ok(list)
+    }
+
+    pub async fn get_thread_messages(
+        account_id: u64,
+        use_proxy: Option<u64>,
+        thread_id: &str,
+    ) -> RustMailerResult<ThreadMessages> {
+        let url = format!(
+            "https://gmail.googleapis.com/gmail/v1/users/me/threads/{}?format=metadata&metadataHeaders=Message-ID&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Bcc&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=Mime-Version&metadataHeaders=Reply-To&metadataHeaders=In-Reply-To&metadataHeaders=References&metadataHeaders=Sender",
+            thread_id,
+        );
+        let client = HttpClient::new(use_proxy).await?;
+        let access_token = Self::get_access_token(account_id).await?;
+        let value = client.get(url.as_str(), &access_token).await?;
+        let messages = serde_json::from_value::<ThreadMessages>(value)
+            .map_err(|e| raise_error!(format!(
+                "Failed to deserialize Gmail API response into MessageMeta: {:#?}. Possible model mismatch or API change.",
+                e
+            ), ErrorCode::InternalError))?;
+        Ok(messages)
     }
 
     pub async fn search_messages(
@@ -381,15 +446,16 @@ impl GmailClient {
     pub async fn list_history(
         account_id: u64,
         use_proxy: Option<u64>,
-        label_id: &str,
+        label_id: Option<&str>,
         start_history_id: &str,
         page_token: Option<&str>,
         max_results: u32,
     ) -> RustMailerResult<HistoryList> {
-        let mut url = format!(
-            "https://gmail.googleapis.com/gmail/v1/users/me/history?labelId={}&maxResults={}&startHistoryId={}",
-            label_id, max_results, start_history_id
-        );
+        let mut url = format!("https://gmail.googleapis.com/gmail/v1/users/me/history?maxResults={}&startHistoryId={}", max_results, start_history_id);
+
+        if let Some(label_id) = label_id {
+            url.push_str(&format!("&labelId={}", label_id));
+        }
 
         if let Some(page_token) = page_token {
             url.push_str(&format!("&pageToken={}", page_token));
@@ -425,7 +491,7 @@ impl GmailClient {
                     ErrorCode::InternalError
                 )
             })?;
-        let map = Self::label_map(account_id, use_proxy).await?;
+        let map = Self::for_get_label_name(account_id, use_proxy).await?;
         let name = map.get("DRAFT").ok_or_else(|| {
             raise_error!(
                 "Cannot find 'DRAFT' label in Gmail account label map".into(),

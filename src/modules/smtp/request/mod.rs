@@ -635,7 +635,7 @@ impl EmailHandler {
         label_name: &str,
         mid: &str,
     ) -> RustMailerResult<EmailEnvelopeV3> {
-        let map = GmailClient::label_map(account.id, account.use_proxy).await?;
+        let map = GmailClient::for_get_label_name(account.id, account.use_proxy).await?;
         if let Ok(label) = GmailLabels::get_by_name(account.id, label_name).await {
             if !account.minimal_sync() {
                 let envelope = GmailEnvelope::find(account.id, label.id, mid).await?;

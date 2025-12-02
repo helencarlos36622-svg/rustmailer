@@ -23,7 +23,7 @@ pub async fn delete_mailbox(account_id: u64, mailbox_name: &str) -> RustMailerRe
                 .await
         }
         MailerType::GmailApi => {
-            let map = GmailClient::reverse_label_map(account_id, account.use_proxy, true).await?;
+            let map = GmailClient::for_lookup_label_id(account_id, account.use_proxy, true).await?;
             let label_id = map.get(mailbox_name).ok_or_else(|| {
                 raise_error!(
                     format!(

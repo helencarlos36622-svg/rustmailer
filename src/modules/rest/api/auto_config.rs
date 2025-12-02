@@ -17,6 +17,7 @@ pub struct AutoConfigApi;
 #[OpenApi(prefix_path = "/api/v1", tag = "ApiTags::AutoConfig")]
 impl AutoConfigApi {
     /// Retrieve mail server configuration for a given email address
+    /// 
     #[oai(
         path = "/autoconfig/:email_address",
         method = "get",

@@ -170,7 +170,7 @@ impl HttpClient {
                                     "API returned client error (status {}) for {}. Response: {}",
                                     status, url, text
                                 ),
-                                ErrorCode::GmailApiInvalidHistoryId
+                                ErrorCode::ApiCallFailed
                             ));
                         }
 

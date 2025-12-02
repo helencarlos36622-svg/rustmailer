@@ -141,9 +141,11 @@ pub async fn should_rebuild_cache(
     if has_delta {
         FolderDeltaLink::clean(account.id).await?;
     }
-    OutlookEnvelope::clean_account(account.id).await?;
-    AddressEntity::clean_account(account.id).await?;
-    EmailThread::clean_account(account.id).await?;
+    if !account.minimal_sync() {
+        OutlookEnvelope::clean_account(account.id).await?;
+        AddressEntity::clean_account(account.id).await?;
+        EmailThread::clean_account(account.id).await?;
+    }
     info!(account_id = account.id, "Cache cleaning completed");
     Ok(true)
 }
@@ -179,10 +181,12 @@ async fn cleanup_deleted_folders(
     deleted_folders: &[OutlookFolder],
 ) -> RustMailerResult<()> {
     let start_time = Instant::now();
-    for folder in deleted_folders {
-        OutlookEnvelope::clean_folder_envelopes(account.id, folder.id).await?;
-        AddressEntity::clean_mailbox_envelopes(account.id, folder.id).await?;
-        EmailThread::clean_mailbox_envelopes(account.id, folder.id).await?;
+    if !account.minimal_sync() {
+        for folder in deleted_folders {
+            OutlookEnvelope::clean_folder_envelopes(account.id, folder.id).await?;
+            AddressEntity::clean_mailbox_envelopes(account.id, folder.id).await?;
+            EmailThread::clean_mailbox_envelopes(account.id, folder.id).await?;
+        }
     }
     OutlookFolder::batch_delete(deleted_folders.to_vec()).await?;
     let elapsed_time = start_time.elapsed().as_secs();

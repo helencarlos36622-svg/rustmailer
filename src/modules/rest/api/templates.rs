@@ -20,7 +20,6 @@ pub struct TempaltesApi;
 #[OpenApi(prefix_path = "/api/v1", tag = "ApiTags::Template")]
 impl TempaltesApi {
     /// Retrieves an email template by its name.
-    ///
     /// Returns the template if found, or a `ResourceNotFound` error if no template matches the provided name.
     #[oai(path = "/template/:id", method = "get", operation_id = "get_template")]
     async fn get_template(
@@ -37,7 +36,6 @@ impl TempaltesApi {
     }
 
     /// Deletes an email template by its name.
-    ///
     /// Removes the specified template if it exists and the client has access. Returns a `ResourceNotFound` error if the template is not found.
     #[oai(
         path = "/template/:id",
@@ -59,7 +57,6 @@ impl TempaltesApi {
     }
 
     /// Creates a new email template.
-    ///
     /// Saves a new email template based on the provided request data.
     #[oai(path = "/template", method = "post", operation_id = "create_template")]
     async fn create_template(
@@ -72,7 +69,6 @@ impl TempaltesApi {
     }
 
     /// Updates an existing email template by its name.
-    ///
     /// Modifies the specified template with the provided update data if it exists and the client has access. Returns a `ResourceNotFound` error if the template is not found.
     #[oai(
         path = "/template/:id",
@@ -95,7 +91,6 @@ impl TempaltesApi {
     }
 
     /// Lists all email templates with pagination.
-    ///
     /// Retrieves a paginated list of all email templates.
     /// Requires root privileges.
     #[oai(
@@ -120,7 +115,6 @@ impl TempaltesApi {
     }
 
     /// Lists email templates associated with a specific account.
-    ///
     /// Retrieves a paginated list of templates for the specified account ID. Requires access to the specified account.
     #[oai(
         path = "/account-templates/:account_id",
@@ -147,7 +141,6 @@ impl TempaltesApi {
     }
 
     /// Deletes all email templates associated with a specific account.
-    ///
     /// Removes all templates linked to the specified account ID. Requires access to the specified account.
     #[oai(
         path = "/account-templates/:account_id",
@@ -166,7 +159,6 @@ impl TempaltesApi {
     }
 
     /// Send a test email using a specific template
-    ///
     /// This endpoint allows sending a test email to verify template rendering and delivery.
     #[oai(
         path = "/template-send-test/:id",

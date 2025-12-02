@@ -155,10 +155,14 @@ pub async fn handle_delta(
                         envelope.account_id = account_id;
                         envelope.folder_id = remote.id;
                         envelope.folder_name = remote.name.clone();
-                        if envelope.exists().await? {
-                            updated.push(envelope);
+                        if account.minimal_sync() {
+                            added.push((envelope, full_message)); //If the local system does not record the email ID, treat all messages—whether new or updated—as new and send them.
                         } else {
-                            added.push((envelope, full_message));
+                            if envelope.exists().await? {
+                                updated.push(envelope);
+                            } else {
+                                added.push((envelope, full_message));
+                            }
                         }
                     }
                 }
@@ -176,8 +180,10 @@ pub async fn handle_delta(
             }
         }
         notify_outlook_envelopes(&account, &added).await?;
-        OutlookEnvelope::save_envelopes(added.into_iter().map(|t| t.0).collect()).await?;
-        OutlookEnvelope::update_envelopes(updated).await?;
+        if !account.minimal_sync() {
+            OutlookEnvelope::save_envelopes(added.into_iter().map(|t| t.0).collect()).await?;
+            OutlookEnvelope::update_envelopes(updated).await?;
+        }
         OutlookFolder::upsert(remote).await?;
     }
     Ok(())
@@ -202,6 +208,12 @@ pub async fn notify_outlook_envelopes(
     let account_id = account.id;
     if EventHookTask::is_watching_email_add_event(account_id).await? {
         for message in envelopes {
+            let thread_id = if account.minimal_sync() {
+                message.0.conversation_id.clone().unwrap()
+            } else {
+                message.0.thread_id.to_string()
+            };
+
             EVENT_CHANNEL
                 .queue(Event::new(
                     account_id,
@@ -228,7 +240,7 @@ pub async fn notify_outlook_envelopes(
                             message: message.1.clone(),
                             thread_name: None,
                             reply_to: message.0.reply_to.clone(),
-                            thread_id: message.0.thread_id,
+                            thread_id,
                             labels: message.0.categories.clone(),
                         }),
                     ),

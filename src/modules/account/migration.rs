@@ -338,7 +338,7 @@ impl AccountV3 {
         if let Some(_) = &request.sync_folders {
             if matches!(account.mailer_type, MailerType::GmailApi) {
                 map = Some(
-                    GmailClient::reverse_label_map(account_id, account.use_proxy, true).await?,
+                    GmailClient::for_lookup_label_id(account_id, account.use_proxy, true).await?,
                 );
             }
         }

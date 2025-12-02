@@ -21,6 +21,7 @@ use crate::{
                 model::{
                     history::HistoryList,
                     messages::{FullMessage, MessageList, MessageMeta, PartBody},
+                    thread::{ThreadList, ThreadMessages},
                 },
                 sync::envelope::GmailEnvelope,
             },
@@ -44,7 +45,7 @@ async fn access_token() -> String {
     grpc_client.set_send_compressed(CompressionEncoding::GZIP);
 
     let request = GetOAuth2TokensRequest {
-        account_id: 658031352292246,
+        account_id: 4727355769996270,
     };
 
     let mut request = poem_grpc::Request::new(request);
@@ -143,13 +144,13 @@ async fn test11() {
 async fn test2() {
     let access_token = access_token().await;
     let url =
-        "https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=INBOX&q=after:2025/08/28&maxResults=20";
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=INBOX&q=before:2025/08/28&maxResults=20";
     let mut builder = reqwest::ClientBuilder::new()
         .user_agent(rustmailer_version!())
         .timeout(Duration::from_secs(10))
         .connect_timeout(Duration::from_secs(10));
 
-    let proxy_obj = reqwest::Proxy::all("socks5://127.0.0.1:22308").unwrap();
+    let proxy_obj = reqwest::Proxy::all("http://127.0.0.1:22307").unwrap();
     builder = builder
         .redirect(reqwest::redirect::Policy::none())
         .proxy(proxy_obj);
@@ -175,13 +176,13 @@ async fn test2() {
 async fn test3() {
     let access_token = access_token().await;
     let url =
-        "https://gmail.googleapis.com/gmail/v1/users/me/messages/198f6735682a3870?format=metadata&metadataHeaders=Message-Id&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Bcc&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=Mime-Version&metadataHeaders=Reply-To&metadataHeaders=In-Reply-To&metadataHeaders=References";
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages/19abb5fe57ca4856?format=metadata&metadataHeaders=Message-Id&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Bcc&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=Mime-Version&metadataHeaders=Reply-To&metadataHeaders=In-Reply-To&metadataHeaders=References";
     let mut builder = reqwest::ClientBuilder::new()
         .user_agent(rustmailer_version!())
         .timeout(Duration::from_secs(10))
         .connect_timeout(Duration::from_secs(10));
 
-    let proxy_obj = reqwest::Proxy::all("socks5://127.0.0.1:22308").unwrap();
+    let proxy_obj = reqwest::Proxy::all("http://127.0.0.1:22307").unwrap();
     builder = builder
         .redirect(reqwest::redirect::Policy::none())
         .proxy(proxy_obj);
@@ -210,13 +211,13 @@ async fn test3() {
 async fn test4() {
     let access_token = access_token().await;
     let url =
-        "https://gmail.googleapis.com/gmail/v1/users/me/history?startHistoryId=42032&labelId=INBOX&maxResults=20";
+        "https://gmail.googleapis.com/gmail/v1/users/me/history?startHistoryId=45284&labelId=INBOX&maxResults=2";
     let mut builder = reqwest::ClientBuilder::new()
         .user_agent(rustmailer_version!())
         .timeout(Duration::from_secs(10))
         .connect_timeout(Duration::from_secs(10));
 
-    let proxy_obj = reqwest::Proxy::all("socks5://127.0.0.1:22308").unwrap();
+    let proxy_obj = reqwest::Proxy::all("http://127.0.0.1:22307").unwrap();
     builder = builder
         .redirect(reqwest::redirect::Policy::none())
         .proxy(proxy_obj);
@@ -236,7 +237,11 @@ async fn test4() {
         let list: HistoryList = serde_json::from_value(body).unwrap();
         println!("Response = {:#?}", list);
     } else {
-        eprintln!("Error: {} - {:?}", res.status(), res.text().await.unwrap());
+        //eprintln!("Error: {} - {:?}", res.status(), res.text().await.unwrap());
+        let text = res.text().await.unwrap();
+        if text.contains("Requested entity was not found") {
+            println!("history id is invalid");
+        }
     }
 }
 
@@ -425,6 +430,75 @@ async fn test9() {
 
         let full_message: FullMessage = serde_json::from_value(body).unwrap();
         println!("Response = {:#?}", full_message);
+    } else {
+        eprintln!("Error: {} - {:?}", res.status(), res.text().await.unwrap());
+    }
+}
+
+#[tokio::test]
+async fn list_threads() {
+    let access_token = access_token().await;
+    let url =
+        "https://gmail.googleapis.com/gmail/v1/users/me/threads?labelIds=INBOX&q=after:2025/07/28&maxResults=20";
+    let mut builder = reqwest::ClientBuilder::new()
+        .user_agent(rustmailer_version!())
+        .timeout(Duration::from_secs(10))
+        .connect_timeout(Duration::from_secs(10));
+
+    let proxy_obj = reqwest::Proxy::all("http://127.0.0.1:22307").unwrap();
+    builder = builder
+        .redirect(reqwest::redirect::Policy::none())
+        .proxy(proxy_obj);
+    let client = builder.build().unwrap();
+    let res = client
+        .get(url)
+        .header(AUTHORIZATION, format!("Bearer {}", access_token))
+        .header(CONTENT_TYPE, "application/json")
+        .send()
+        .await
+        .unwrap();
+
+    if res.status().is_success() {
+        let body: Value = res.json().await.unwrap();
+        //println!("Response = {:#?}", body);
+        let list: ThreadList = serde_json::from_value(body).unwrap();
+        println!("Response = {:#?}", list);
+    } else {
+        eprintln!("Error: {} - {:?}", res.status(), res.text().await.unwrap());
+    }
+}
+
+#[tokio::test]
+async fn test13() {
+    let access_token = access_token().await;
+    let url =
+        "https://gmail.googleapis.com/gmail/v1/users/me/threads/19ad6ed3d0afba92?format=metadata&metadataHeaders=Message-Id&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Bcc&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=Mime-Version&metadataHeaders=Reply-To&metadataHeaders=In-Reply-To&metadataHeaders=References";
+    let mut builder = reqwest::ClientBuilder::new()
+        .user_agent(rustmailer_version!())
+        .timeout(Duration::from_secs(10))
+        .connect_timeout(Duration::from_secs(10));
+
+    let proxy_obj = reqwest::Proxy::all("http://127.0.0.1:22307").unwrap();
+    builder = builder
+        .redirect(reqwest::redirect::Policy::none())
+        .proxy(proxy_obj);
+    let client = builder.build().unwrap();
+    let res = client
+        .get(url)
+        .header(AUTHORIZATION, format!("Bearer {}", access_token))
+        .header(CONTENT_TYPE, "application/json")
+        .send()
+        .await
+        .unwrap();
+
+    if res.status().is_success() {
+        let body: Value = res.json().await.unwrap();
+        println!("Response = {:#?}", body);
+        let messages: ThreadMessages = serde_json::from_value(body).unwrap();
+        println!("Response = {:#?}", messages);
+
+        // let envelope: GmailEnvelope = detail.try_into().unwrap();
+        // println!("Response = {:#?}", envelope);
     } else {
         eprintln!("Error: {} - {:?}", res.status(), res.text().await.unwrap());
     }

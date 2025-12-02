@@ -5,3 +5,4 @@
 pub mod history;
 pub mod labels;
 pub mod messages;
+pub mod thread;

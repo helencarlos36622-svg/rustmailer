@@ -168,7 +168,6 @@ impl AccountApi {
     }
 
     /// Get a minimal list of active accounts for use in selectors when creating account-related resources
-    ///
     /// This endpoint provides a lightweight list of accounts containing only essential information (id and name).
     /// It's primarily designed for UI selectors/dropdowns when creating or associating resources with accounts.
     #[oai(

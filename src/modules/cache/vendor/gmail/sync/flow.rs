@@ -27,7 +27,7 @@ pub async fn fetch_and_save_since_date(
     date: &str,
     label: &GmailLabels,
     initial: bool,
-) -> RustMailerResult<(usize, Option<String>)> {
+) -> RustMailerResult<usize> {
     // let total_batches = total.div_ceil(page_size); // Calculate total number of batches, useful for tracking sync progress on UI
     let mut inserted_count = 0;
     let account_id = account.id;
@@ -37,14 +37,13 @@ pub async fn fetch_and_save_since_date(
     let mut page_token: Option<String> = None;
     let mut page = 1; // Used only for tracking sync progress
                       // let semaphore = Arc::new(Semaphore::new(1));
-    let mut history_ids = Vec::new();
     let mut page_size = ENVELOPE_BATCH_SIZE;
     let mut total_to_fetch = 100;
     loop {
         let resp = GmailClient::list_messages(
             account_id,
             use_proxy,
-            &label.label_id,
+            Some(&label.label_id),
             page_token.as_deref(),
             Some(date),
             page_size,
@@ -129,10 +128,6 @@ pub async fn fetch_and_save_since_date(
                 })
                 .collect::<RustMailerResult<Vec<GmailEnvelope>>>()?;
             inserted_count += envelopes.len();
-            let hid = compute_max_history_id(&envelopes);
-            if let Some(hid) = hid {
-                history_ids.push(hid.to_string());
-            }
             GmailEnvelope::save_envelopes(envelopes).await?;
         }
         // Break if API response has no next page
@@ -145,8 +140,7 @@ pub async fn fetch_and_save_since_date(
         }
         page += 1;
     }
-    let hid = max_history_id(&history_ids).map(|s| s.to_string());
-    Ok((inserted_count, hid))
+    Ok(inserted_count)
 }
 
 pub async fn fetch_and_save_full_label(
@@ -154,7 +148,7 @@ pub async fn fetch_and_save_full_label(
     label: &GmailLabels,
     total: u32,
     initial: bool,
-) -> RustMailerResult<(usize, Option<String>)> {
+) -> RustMailerResult<usize> {
     let folder_limit = account.folder_limit;
     let total_to_fetch = match folder_limit {
         Some(limit) if limit < total => total.min(limit.max(100)),
@@ -184,7 +178,6 @@ pub async fn fetch_and_save_full_label(
     let mut page_token: Option<String> = None;
     let mut page = 1; // Used only for tracking sync progress
                       // let semaphore = Arc::new(Semaphore::new(1));
-    let mut history_ids = Vec::new();
     loop {
         // Stop if we have already fetched enough messages
         if inserted_count as u32 >= total_to_fetch {
@@ -196,7 +189,7 @@ pub async fn fetch_and_save_full_label(
         let resp = GmailClient::list_messages(
             account_id,
             use_proxy,
-            &label.label_id,
+            Some(&label.label_id),
             page_token.as_deref(),
             None,
             page_size,
@@ -250,10 +243,6 @@ pub async fn fetch_and_save_full_label(
                 })
                 .collect::<RustMailerResult<Vec<GmailEnvelope>>>()?;
             inserted_count += envelopes.len();
-            let hid = compute_max_history_id(&envelopes);
-            if let Some(hid) = hid {
-                history_ids.push(hid.to_string());
-            }
             GmailEnvelope::save_envelopes(envelopes).await?;
         }
         // Break if API response has no next page
@@ -262,68 +251,6 @@ pub async fn fetch_and_save_full_label(
         }
         page += 1;
     }
-    let hid = max_history_id(&history_ids).map(|s| s.to_string());
-    Ok((inserted_count, hid))
-}
 
-fn max_history_id_fallback<'a>(a: &'a str, b: &'a str) -> &'a str {
-    match (a.parse::<u64>(), b.parse::<u64>()) {
-        (Ok(a_num), Ok(b_num)) => {
-            if a_num >= b_num {
-                a
-            } else {
-                b
-            }
-        }
-        _ => {
-            if a.len() > b.len() {
-                a
-            } else if b.len() > a.len() {
-                b
-            } else if a >= b {
-                a
-            } else {
-                b
-            }
-        }
-    }
-}
-
-pub fn max_history_id(ids: &[String]) -> Option<&str> {
-    ids.iter()
-        .map(|s| s.as_str())
-        .reduce(|a, b| max_history_id_fallback(a, b))
-}
-
-fn compute_max_history_id<'a>(envelopes: &'a [GmailEnvelope]) -> Option<&'a str> {
-    envelopes
-        .iter()
-        .map(|e| e.history_id.as_str())
-        .fold(None, |max_id, curr| {
-            Some(match max_id {
-                Some(m) => max_history_id_fallback(m, curr),
-                None => curr,
-            })
-        })
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::modules::cache::vendor::gmail::sync::flow::max_history_id_fallback;
-
-    #[tokio::test]
-    async fn test1() {
-        let ids = vec![
-            "2671855", "2671863", "2671871", "2671881", "2671891", "2671898", "100865", "81974",
-            "81967", "2671905", "531772", "531769", "3296", "1385924",
-        ];
-
-        let max_id = ids
-            .iter()
-            .cloned()
-            .reduce(|a, b| max_history_id_fallback(a, b))
-            .unwrap();
-
-        assert_eq!(max_id, "2671905");
-    }
+    Ok(inserted_count)
 }

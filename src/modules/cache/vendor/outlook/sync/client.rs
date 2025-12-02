@@ -182,6 +182,39 @@ impl OutlookClient {
         Ok(list)
     }
 
+
+    pub async fn get_thread_messages(
+        account_id: u64,
+        use_proxy: Option<u64>,
+        conversation_id: &str,
+    ) -> RustMailerResult<MessageListResponse> {
+        let url = format!(
+            "https://graph.microsoft.com/v1.0/me/messages?\
+            $filter=conversationId eq '{}'&\
+            $select=id,isRead,conversationId,internetMessageId,from,body,toRecipients,ccRecipients,\
+            bccRecipients,replyTo,sender,subject,receivedDateTime,sentDateTime,isRead,bodyPreview,categories&\
+            $expand=attachments($select=id,name,contentType,size,isInline,microsoft.graph.fileAttachment/contentId)",
+            conversation_id
+        );
+
+        let client = HttpClient::new(use_proxy).await?;
+        let access_token = Self::get_access_token(account_id).await?;
+        let value = client.get(url.as_str(), &access_token).await?;
+        let list = match serde_json::from_value::<MessageListResponse>(value.clone()) {
+            Ok(res) => res,
+            Err(e) => {
+                error!(
+                    "Failed to deserialize Graph API response into MessageListResponse: {:#?}",
+                    e
+                );
+                error!("Original JSON: {}", value);
+                return Err(raise_error!(format!("Failed to deserialize Graph API response into MessageListResponse: {:#?}. Possible model mismatch or API change.",e),ErrorCode::InternalError));
+            }
+        };
+
+        Ok(list)
+    }
+
     pub async fn get_delta_link(
         account_id: u64,
         use_proxy: Option<u64>,

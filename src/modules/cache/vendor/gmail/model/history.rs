@@ -9,7 +9,7 @@ pub struct HistoryList {
     #[serde(default)]
     pub history: Vec<History>,
     #[serde(rename = "historyId")]
-    pub history_id: String,
+    pub history_id: String,//This is the current maximum history ID for the entire account.
     #[serde(rename = "nextPageToken")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_page_token: Option<String>,

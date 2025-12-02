@@ -172,7 +172,7 @@ pub async fn tag_messages_impl(account_id: u64, payload: BatchTagRequest) -> Rus
         }
         MailerType::GmailApi => {
             let labels_map =
-                GmailClient::reverse_label_map(account_id, account.use_proxy, true).await?;
+                GmailClient::for_lookup_label_id(account_id, account.use_proxy, true).await?;
             let tags_to_process = &payload.tags;
             let mut target_label_ids: Vec<String> = Vec::with_capacity(tags_to_process.len());
             for tag_name in tags_to_process {

@@ -15,7 +15,6 @@ pub struct LicenseApi;
 #[OpenApi(prefix_path = "/api/v1", tag = "ApiTags::License")]
 impl LicenseApi {
     /// Retrieve current license information
-    ///
     /// Requires root privileges.
     #[oai(path = "/license", method = "get", operation_id = "get_license")]
     async fn get_license(&self, context: ClientContext) -> ApiResult<Json<License>> {
@@ -30,7 +29,6 @@ impl LicenseApi {
     }
 
     /// Upload and activate a new license
-    ///
     /// Requires root privileges.
     #[oai(path = "/license", method = "post", operation_id = "set_license")]
     async fn set_license(

@@ -112,13 +112,11 @@ impl MessageApi {
     }
 
     /// Batch modifies the custom tags, categories, or keywords on messages.
-    ///
     /// This interface is dedicated to operating on **user-defined labels** and is separate
     /// from standard system status flags (like Read/Unread).
     /// It unifies tagging across different email services:
     /// - **Gmail/Graph API:** Operates on user-defined Label IDs or Category Names.
     /// - **IMAP/SMTP:** Operates on custom IMAP Keywords (Custom Flags).
-    ///
     /// **Note:** This is a high-level operation designed for user tag management.
     #[oai(
         path = "/tag-messages/:account_id",
@@ -155,7 +153,6 @@ impl MessageApi {
         /// fetches messages from the IMAP server; otherwise, uses local data.
         remote: Query<Option<bool>>,
         /// The token for fetching the next page of results in pagination.
-        ///
         /// - If `None`, this indicates that the first page should be returned.
         /// - If `Some(token)`, the page corresponding to this token will be fetched.
         next_page_token: Query<Option<String>>,
@@ -197,21 +194,32 @@ impl MessageApi {
         /// This name is presented as it appears to users, with any encoding (e.g., UTF-7) automatically handled by the system,
         /// so no manual decoding is required.
         mailbox: Query<String>,
-        /// The page number for pagination (1-based).
-        page: Query<u64>,
+        /// The token for fetching the next page of results in pagination.
+        /// - If `None`, this indicates that the first page should be returned.
+        /// - If `Some(token)`, the page corresponding to this token will be fetched.
+        next_page_token: Query<Option<String>>,
         /// The number of messages per page.
         page_size: Query<u64>,
         /// lists messages in descending order; otherwise, ascending. internal date
         desc: Query<Option<bool>>,
+        /// fetches threads from the gmail/outlook server; otherwise, uses local data.
+        remote: Query<Option<bool>>,
         context: ClientContext,
-    ) -> ApiResult<Json<DataPage<Envelope>>> {
+    ) -> ApiResult<Json<CursorDataPage<Envelope>>> {
         let desc = desc.0.unwrap_or(false);
         let account_id = account_id.0;
         context.require_account_access(account_id)?;
-
+        let remote = remote.0.unwrap_or(false);
         Ok(Json(
-            list_threads_in_mailbox(account_id, mailbox.0.trim(), page.0, page_size.0, desc)
-                .await?,
+            list_threads_in_mailbox(
+                account_id,
+                mailbox.0.trim(),
+                next_page_token.0.as_deref(),
+                page_size.0,
+                remote,
+                desc,
+            )
+            .await?,
         ))
     }
 
@@ -226,13 +234,15 @@ impl MessageApi {
         /// The ID of the account owning the mailbox.
         account_id: Path<u64>,
         // Thread ID
-        thread_id: Query<u64>,
+        thread_id: Query<String>,
+        /// fetches threads from the gmail/outlook server; otherwise, uses local data.
+        remote: Query<Option<bool>>,
         context: ClientContext,
     ) -> ApiResult<Json<Vec<Envelope>>> {
         let account_id = account_id.0;
         context.require_account_access(account_id)?;
-
-        Ok(Json(get_thread_messages(account_id, thread_id.0).await?))
+        let remote = remote.0.unwrap_or(false);
+        Ok(Json(get_thread_messages(account_id, thread_id.0, remote).await?))
     }
 
     /// Fetches the content of a specific email for the given account.
@@ -330,7 +340,6 @@ impl MessageApi {
         /// The ID of the account owning the mailboxes.
         account_id: Path<u64>,
         /// The token for fetching the next page of results in pagination.
-        ///
         /// - If `None`, this indicates that the first page should be returned.
         /// - If `Some(token)`, the page corresponding to this token will be fetched.
         next_page_token: Query<Option<String>>,
@@ -400,7 +409,6 @@ impl MessageApi {
     /// Creates a reply draft email for the specified account.
     /// The server internally constructs the reply email, automatically linking it to the
     /// original email thread by applying appropriate headers such as `References` and `In-Reply-To`.
-    ///
     /// The newly created draft is appended into the specified draft mailbox.
     #[oai(
         path = "/append-reply-to-draft/:account_id",

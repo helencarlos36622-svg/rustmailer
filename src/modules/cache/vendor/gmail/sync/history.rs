@@ -15,7 +15,6 @@ use crate::{
                 cleanup_single_label,
                 client::GmailClient,
                 envelope::GmailEnvelope,
-                flow::max_history_id,
                 labels::{GmailCheckPoint, GmailLabels},
                 rebuild::rebuild_single_label_cache,
             },
@@ -43,14 +42,15 @@ pub async fn handle_history(
     let use_proxy = account.use_proxy.clone();
     let remote_labels = find_existing_remote_labels(local_labels, remote_labels);
     let checkpoint = GmailCheckPoint::get(account_id).await?;
-    let mut history_ids = Vec::with_capacity(remote_labels.len());
+    let mut current_max_history_id: Option<u64> = None;
+
     for remote in remote_labels {
         let mut page_token = None;
         loop {
             let mut list = match GmailClient::list_history(
                 account_id,
                 use_proxy.clone(),
-                &remote.label_id,
+                Some(&remote.label_id),
                 &checkpoint.history_id,
                 page_token.as_deref(),
                 100, // 100 items per page
@@ -64,11 +64,10 @@ pub async fn handle_history(
                         location: _,
                         code,
                     } => {
-                        if code == ErrorCode::GmailApiInvalidHistoryId {
-                            let history_id = handle_invalid_history_id(account, &remote).await?;
-                            if let Some(history_id) = history_id {
-                                history_ids.push(history_id);
-                            }
+                        if code == ErrorCode::ApiCallFailed
+                            && message.contains("Requested entity was not found")
+                        {
+                            handle_invalid_history_id(account, &remote).await?;
                             break;
                         } else {
                             return Err(raise_error!(message, code));
@@ -76,27 +75,57 @@ pub async fn handle_history(
                     }
                 },
             };
-            page_token = list.next_page_token.take();
 
-            let history_list: Vec<History> = list
-                .history
-                .into_iter()
-                .filter(|h| h.has_changes())
-                .collect();
+            let history_id = parse_history_id(&list.history_id)?;
+            page_token = list.next_page_token.take();
+            let history_items = list.history;
+            let history_list = match current_max_history_id {
+                Some(current) => {
+                    if history_id > current {
+                        history_items
+                            .into_iter()
+                            .filter(|h| {
+                                h.has_changes()
+                                    && h.id.parse::<u64>().map(|id| id <= current).unwrap_or(false)
+                            })
+                            .collect()
+                    } else {
+                        history_items
+                            .into_iter()
+                            .filter(|h| h.has_changes())
+                            .collect()
+                    }
+                }
+                None => {
+                    current_max_history_id = Some(history_id);
+                    history_items
+                        .into_iter()
+                        .filter(|h| h.has_changes())
+                        .collect()
+                }
+            };
             apply_history(account, &remote, history_list).await?;
             if page_token.is_none() {
-                history_ids.push(list.history_id);
                 break;
             }
         }
         GmailLabels::upsert(remote).await?;
     }
-    let max = max_history_id(&history_ids);
-    if let Some(history_id) = max {
-        let checkpoint = GmailCheckPoint::new(account_id, history_id.to_string());
-        checkpoint.save().await?;
+    if let Some(current_max_history_id) = current_max_history_id {
+        GmailCheckPoint::new(account_id, current_max_history_id.to_string())
+            .save()
+            .await?;
     }
     Ok(())
+}
+
+fn parse_history_id(history_id: &str) -> RustMailerResult<u64> {
+    history_id.parse::<u64>().map_err(|e| {
+        raise_error!(
+            format!("Invalid Gmail historyId '{}': {}", history_id, e),
+            ErrorCode::InternalError
+        )
+    })
 }
 
 pub fn find_existing_remote_labels(
@@ -127,79 +156,126 @@ pub async fn apply_history(
         let mut label_changes: AHashMap<String, LabelChange> = AHashMap::new();
         // -- labels_added
         for item in history.labels_added {
-            let current =
-                GmailEnvelope::find(account.id, label.id, item.message.id.as_str()).await?;
-            match current {
-                Some(mut current) => {
-                    let mut merged: HashSet<String> = current.label_ids.into_iter().collect();
-                    let mut actually_added = Vec::new();
-                    if let Some(to_add) = &item.label_ids {
-                        for l in to_add {
-                            if !merged.contains(l) {
-                                actually_added.push(l.clone());
-                            }
-                        }
-                        merged.extend(to_add.iter().cloned());
-                    }
-                    if !actually_added.is_empty() {
-                        let entry = label_changes
-                            .entry(item.message.id.clone())
-                            .or_insert_with(|| LabelChange::default());
-                        entry.added.extend(actually_added);
-                    }
-                    current.label_ids = merged.into_iter().collect();
-                    GmailEnvelope::upsert(current).await?;
+            if account.minimal_sync() {
+                if let Some(to_add) = &item.label_ids {
+                    let entry = label_changes
+                        .entry(item.message.id.clone())
+                        .or_insert_with(LabelChange::default);
+                    entry.added.extend(to_add.iter().cloned());
                 }
-                None => {
-                    warn!(
-                        "Message {} not found in local cache, cannot merge labels.",
-                        item.message.id
-                    );
+            } else {
+                let current =
+                    GmailEnvelope::find(account.id, label.id, item.message.id.as_str()).await?;
+                match current {
+                    Some(mut current) => {
+                        let mut merged: HashSet<String> = current.label_ids.into_iter().collect();
+                        let mut actually_added = Vec::new();
+                        if let Some(to_add) = &item.label_ids {
+                            for l in to_add {
+                                if !merged.contains(l) {
+                                    actually_added.push(l.clone());
+                                }
+                            }
+                            merged.extend(to_add.iter().cloned());
+                        }
+                        if !actually_added.is_empty() {
+                            let entry = label_changes
+                                .entry(item.message.id.clone())
+                                .or_insert_with(|| LabelChange::default());
+                            entry.added.extend(actually_added);
+                        }
+                        current.label_ids = merged.into_iter().collect();
+                        GmailEnvelope::upsert(current).await?;
+                    }
+                    None => {
+                        warn!(
+                            "Message {} not found in local cache, cannot merge labels.",
+                            item.message.id
+                        );
+                    }
                 }
             }
         }
         // -- labels_removed
         for item in history.labels_removed {
-            let current =
-                GmailEnvelope::find(account.id, label.id, item.message.id.as_str()).await?;
-            match current {
-                Some(mut current) => {
-                    if let Some(to_remove) = &item.label_ids {
-                        let mut actually_removed = Vec::new();
-                        if to_remove.contains(&label.id.to_string()) {
-                            GmailEnvelope::delete(account.id, label.id, &current.id).await?;
-                        } else {
-                            current.label_ids.retain(|id| {
-                                let keep = !to_remove.contains(id);
-                                if !keep {
-                                    actually_removed.push(id.clone());
-                                }
-                                keep
-                            });
-                            GmailEnvelope::upsert(current).await?;
-                        }
-                        if !actually_removed.is_empty() {
-                            let entry = label_changes
-                                .entry(item.message.id.clone())
-                                .or_insert_with(|| LabelChange::default());
-                            entry.removed.extend(actually_removed);
+            if account.minimal_sync() {
+                if let Some(to_remove) = &item.label_ids {
+                    let entry = label_changes
+                        .entry(item.message.id.clone())
+                        .or_insert_with(LabelChange::default);
+                    entry.removed.extend(to_remove.iter().cloned());
+                }
+            } else {
+                let current =
+                    GmailEnvelope::find(account.id, label.id, item.message.id.as_str()).await?;
+                match current {
+                    Some(mut current) => {
+                        if let Some(to_remove) = &item.label_ids {
+                            let mut actually_removed = Vec::new();
+                            if to_remove.contains(&label.id.to_string()) {
+                                GmailEnvelope::delete(account.id, label.id, &current.id).await?;
+                            } else {
+                                current.label_ids.retain(|id| {
+                                    let keep = !to_remove.contains(id);
+                                    if !keep {
+                                        actually_removed.push(id.clone());
+                                    }
+                                    keep
+                                });
+                                GmailEnvelope::upsert(current).await?;
+                            }
+                            if !actually_removed.is_empty() {
+                                let entry = label_changes
+                                    .entry(item.message.id.clone())
+                                    .or_insert_with(|| LabelChange::default());
+                                entry.removed.extend(actually_removed);
+                            }
                         }
                     }
-                }
-                None => {
-                    warn!(
-                        "Message {} not found in local cache, cannot merge labels.",
-                        item.message.id
-                    );
+                    None => {
+                        warn!(
+                            "Message {} not found in local cache, cannot merge labels.",
+                            item.message.id
+                        );
+                    }
                 }
             }
         }
 
-        if !label_changes.is_empty() {
-            if !account.minimal_sync()
-                && EventHookTask::is_watching_email_flags_changed(account.id).await?
-            {
-                for entry in label_changes {
+        if !label_changes.is_empty()
+            && EventHookTask::is_watching_email_flags_changed(account.id).await?
+        {
+            for entry in label_changes {
+                if account.minimal_sync() {
+                    let message_data =
+                        GmailClient::get_message(account.id, account.use_proxy, entry.0.as_str())
+                            .await?;
+                    let current: GmailEnvelope = message_data.try_into()?;
+                    EVENT_CHANNEL
+                        .queue(Event::new(
+                            account.id,
+                            &account.email,
+                            RustMailerEvent::new(
+                                EventType::EmailFlagsChanged,
+                                EventPayload::EmailFlagsChanged(EmailFlagsChanged {
+                                    account_id: account.id,
+                                    account_email: account.email.clone(),
+                                    mailbox_name: label.name.clone(),
+                                    uid: None,
+                                    from: current.from,
+                                    to: current.to,
+                                    message_id: current.message_id,
+                                    subject: current.subject,
+                                    internal_date: Some(current.internal_date),
+                                    date: current.date,
+                                    flags_added: entry.1.added,
+                                    flags_removed: entry.1.removed,
+                                    mid: Some(entry.0),
+                                }),
+                            ),
+                        ))
+                        .await;
+                } else {
                     if let Some(current) =
                         GmailEnvelope::find(account.id, label.id, entry.0.as_str()).await?
                     {
@@ -280,7 +356,9 @@ pub async fn apply_history(
                 messages_added.len(),
                 &label.name
             );
-            GmailEnvelope::save_envelopes(messages_added.clone()).await?;
+            if !account.minimal_sync() {
+                GmailEnvelope::save_envelopes(messages_added.clone()).await?;
+            }
             if EventHookTask::is_watching_email_add_event(account.id).await? {
                 dispatch_new_email_notification(account, messages_added).await?;
             }
@@ -306,13 +384,19 @@ async fn dispatch_new_email_notification(
     account: &AccountModel,
     messages: Vec<GmailEnvelope>,
 ) -> RustMailerResult<()> {
-    let label_map = GmailClient::label_map(account.id, account.use_proxy).await?;
+    let label_map = GmailClient::for_get_label_name(account.id, account.use_proxy).await?;
     for message in messages {
         let full_message =
             GmailClient::get_full_messages(account.id, account.use_proxy, &message.id).await?;
+        let gmail_thread_id = full_message.thread_id.clone();
         let message_content: FullMessageContent = full_message.try_into()?;
         let mut envelope = message.into_envelope(&label_map);
-        envelope.thread_id = envelope.compute_thread_id();
+
+        envelope.thread_id = if account.minimal_sync() {
+            gmail_thread_id.unwrap_or_default()
+        } else {
+            envelope.compute_thread_id().to_string()
+        };
         EVENT_CHANNEL
             .queue(Event::new(
                 account.id,
@@ -355,7 +439,7 @@ async fn dispatch_new_email_notification(
 async fn handle_invalid_history_id(
     account: &AccountModel,
     label: &GmailLabels,
-) -> RustMailerResult<Option<String>> {
+) -> RustMailerResult<()> {
     info!(
         "Account {}: Invalid history ID detected for label '{}'. Rebuilding local state...",
         account.id, label.name
@@ -370,5 +454,8 @@ async fn handle_invalid_history_id(
         "Account {}: Upserted label '{}' into local database",
         account.id, label.name
     );
-    rebuild_single_label_cache(account, label).await
+    if !account.minimal_sync() {
+        rebuild_single_label_cache(account, label).await?;
+    }
+    Ok(())
 }

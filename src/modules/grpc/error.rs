@@ -43,7 +43,6 @@ impl From<RustMailerError> for Status {
             | ErrorCode::AutoconfigFetchFailed
             | ErrorCode::ImapCommandFailed
             | ErrorCode::ApiCallFailed
-            | ErrorCode::GmailApiInvalidHistoryId
             | ErrorCode::ImapUnexpectedResult
             | ErrorCode::HttpResponseError
             | ErrorCode::NatsRequestFailed

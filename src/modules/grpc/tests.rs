@@ -131,8 +131,9 @@ async fn test4() {
     let request = ListThreadsRequest {
         account_id: 8869750310191797,
         mailbox_name: "INBOX".into(),
-        page: 1,
+        next_page_token: Some("1".into()),
         page_size: 15,
+        remote: false,
         desc: true,
     };
 
@@ -159,7 +160,8 @@ async fn test5() {
 
     let request = GetThreadMessagesRequest {
         account_id: 6606017263301165,
-        thread_id: 1572863359614161,
+        thread_id: "1572863359614161".into(),
+        remote: None,
     };
 
     let mut request = poem_grpc::Request::new(request);

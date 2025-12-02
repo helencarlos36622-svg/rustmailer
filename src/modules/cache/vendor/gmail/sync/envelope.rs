@@ -425,7 +425,7 @@ impl GmailEnvelope {
             message_id: self.message_id,
             subject: self.subject,
             thread_name: None,
-            thread_id: self.thread_id,
+            thread_id: self.gmail_thread_id,
             mime_version: self.mime_version,
             references: self.references,
             reply_to: self.reply_to,

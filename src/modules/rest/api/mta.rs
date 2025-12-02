@@ -39,7 +39,6 @@ impl MTAApi {
     }
 
     /// Deletes an existing MTA configuration identified by its name.
-    ///
     /// Requires root privileges.
     #[oai(path = "/mta/:id", method = "delete", operation_id = "remove_mta")]
     async fn remove_mta(
@@ -53,7 +52,6 @@ impl MTAApi {
     }
 
     /// Creates a new MTA configuration.
-    ///
     /// Requires root privileges.
     #[oai(path = "/mta", method = "post", operation_id = "create_mta")]
     async fn create_mta(
@@ -68,7 +66,6 @@ impl MTAApi {
     }
 
     /// Updates an existing MTA configuration by its name.
-    ///
     /// Requires root privileges.
     #[oai(path = "/mta/:id", method = "post", operation_id = "update_mta")]
     async fn update_mta(

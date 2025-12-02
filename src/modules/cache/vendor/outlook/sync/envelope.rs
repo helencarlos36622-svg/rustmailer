@@ -463,7 +463,7 @@ impl From<OutlookEnvelope> for Envelope {
             message_id: value.message_id,
             subject: value.subject,
             thread_name: None,
-            thread_id: value.thread_id,
+            thread_id: value.thread_id.to_string(),
             mime_version: value.mime_version,
             references: value.references,
             reply_to: value.reply_to,

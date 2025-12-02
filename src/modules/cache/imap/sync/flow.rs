@@ -930,7 +930,7 @@ async fn process_email_added_events(
                         message: message_content,
                         thread_name: envelope.thread_name,
                         reply_to: envelope.reply_to,
-                        thread_id,
+                        thread_id: thread_id.to_string(),
                         labels: vec![],
                     }),
                 ),

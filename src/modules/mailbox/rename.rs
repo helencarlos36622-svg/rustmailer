@@ -41,7 +41,7 @@ pub struct MailboxUpdateRequest {
     pub label_color: Option<LabelColor>,
 }
 
-pub async fn update_mailbox(
+pub async fn update_mailbox_impl(
     account_id: u64,
     payload: MailboxUpdateRequest,
 ) -> RustMailerResult<()> {
@@ -72,7 +72,7 @@ pub async fn update_mailbox(
                 ));
             }
 
-            let map = GmailClient::reverse_label_map(account_id, account.use_proxy, true).await?;
+            let map = GmailClient::for_lookup_label_id(account_id, account.use_proxy, true).await?;
             let label_id = map.get(&payload.current_name).ok_or_else(|| {
                 raise_error!(
                     format!(

@@ -27,7 +27,6 @@ pub struct SendMailApi;
 #[OpenApi(prefix_path = "/api/v1", tag = "ApiTags::SendMail")]
 impl SendMailApi {
     /// Sends a new email for a specified account.
-    ///
     /// This endpoint constructs and sends a new email based on the provided request data.
     #[oai(
         path = "/send-mail/:account_id",
@@ -49,7 +48,6 @@ impl SendMailApi {
     }
 
     /// Sends a reply to an existing email for a specified account.
-    ///
     /// This endpoint constructs and sends a reply to an email based on the provided request data.
     #[oai(
         path = "/reply-mail/:account_id",
@@ -71,7 +69,6 @@ impl SendMailApi {
     }
 
     /// Forwards an existing email for a specified account.
-    ///
     /// This endpoint constructs and sends a forwarded email based on the provided request data.
     #[oai(
         path = "/forward-mail/:account_id",
@@ -93,7 +90,6 @@ impl SendMailApi {
     }
 
     /// Lists email tasks with pagination, sorting, and optional status filtering.
-    ///
     /// This endpoint retrieves a paginated list of email tasks, filtered by accessible accounts
     /// and optionally by task status. It supports sorting in ascending or descending order by creation time.
     #[oai(
@@ -167,7 +163,6 @@ impl SendMailApi {
     }
 
     /// Retrieves a specific email task by its ID.
-    ///
     /// This endpoint fetches the details of an email task identified by the provided ID.
     #[oai(
         path = "/send-email-task/:id",
@@ -190,7 +185,6 @@ impl SendMailApi {
     }
 
     /// Mark a email task for deletion from queue
-    ///
     /// Initiates asynchronous removal of an email task by marking it for deletion.
     /// The task will be:
     /// 1. Immediately marked as "cancelled" in the system

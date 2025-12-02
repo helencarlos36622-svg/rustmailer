@@ -137,7 +137,7 @@ pub async fn transfer_messages(
             }
 
             let labels_map =
-                GmailClient::reverse_label_map(account_id, account.use_proxy, true).await?;
+                GmailClient::for_lookup_label_id(account_id, account.use_proxy, true).await?;
             match transfer {
                 MessageTransfer::Move => {
                     let target_label_id =

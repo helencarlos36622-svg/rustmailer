@@ -19,7 +19,6 @@ pub struct AccessTokenApi;
 #[OpenApi(prefix_path = "/api/v1", tag = "ApiTags::AccessToken")]
 impl AccessTokenApi {
     /// Lists all access tokens in the system.
-    ///
     /// Requires root privileges.
     #[oai(
         path = "/access-token-list",
@@ -35,7 +34,6 @@ impl AccessTokenApi {
     }
 
     /// Lists access tokens for a specific account.
-    ///
     /// Requires root privileges.
     #[oai(
         path = "/access-token-list/:account_id",
@@ -52,7 +50,6 @@ impl AccessTokenApi {
         Ok(Json(AccessToken::list_account_tokens(account_id.0).await?))
     }
     /// Deletes a specific access token.
-    ///
     /// Requires root privileges.
     #[oai(
         path = "/access-token/:token",
@@ -70,7 +67,6 @@ impl AccessTokenApi {
     }
 
     /// Creates a new access token.
-    ///
     /// Requires root privileges.
     #[oai(
         path = "/access-token",
@@ -88,7 +84,6 @@ impl AccessTokenApi {
     }
 
     /// Updates an existing access token.
-    ///
     /// Requires root privileges.
     #[oai(
         path = "/access-token/:token",
@@ -108,7 +103,6 @@ impl AccessTokenApi {
     }
 
     /// Regenerates the root access token.
-    ///
     /// Requires root privileges.
     #[oai(
         path = "/reset-root-token",
@@ -121,7 +115,6 @@ impl AccessTokenApi {
     }
 
     /// Reset the Root user's password.
-    ///
     /// Only callable by an already authenticated Root user.
     /// This endpoint updates the Root password to `password_str`
     /// and regenerates the `root_token`, invalidating any previous token.
@@ -140,7 +133,6 @@ impl AccessTokenApi {
     }
 
     // /// Login endpoint for the Root user.
-    // ///
     // /// Accepts the Root password and returns the `root_token`
     // /// which should be used in subsequent requests for authentication.
     // #[oai(path = "/login", method = "post", operation_id = "login")]

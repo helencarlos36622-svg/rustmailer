@@ -18,13 +18,16 @@ use tracing::info;
 use crate::modules::{
     account::{entity::MailerType, migration::AccountModel, status::AccountRunningState},
     cache::{
-        imap::{address::AddressEntity, thread::EmailThread}, sync_type::{determine_sync_type, SyncType}, vendor::gmail::sync::{
+        imap::{address::AddressEntity, thread::EmailThread},
+        sync_type::{determine_sync_type, SyncType},
+        vendor::gmail::sync::{
+            client::GmailClient,
             envelope::GmailEnvelope,
             history::handle_history,
             labels::{GmailCheckPoint, GmailLabels},
             rebuild::{rebuild_cache, rebuild_cache_since_date, rebuild_single_label_cache},
             sync_labels::get_sync_labels,
-        }
+        },
     },
     error::RustMailerResult,
     hook::{
@@ -96,6 +99,7 @@ pub async fn execute_gmail_sync(account: &AccountModel) -> RustMailerResult<()> 
         }
         return Ok(());
     }
+
     handle_history(account, &local_labels, &remote_labels).await?;
 
     let deleted_labels = find_deleted_labels(&local_labels, &remote_labels);
@@ -117,9 +121,11 @@ pub async fn execute_gmail_sync(account: &AccountModel) -> RustMailerResult<()> 
             "Inserting missing Gmail labels into database"
         );
         GmailLabels::batch_insert(&missing_labels).await?;
-        for label in &missing_labels {
-            //During incremental synchronization, if any labels are found missing or not fully synchronized, the checkpoint does not need to be updated.
-            rebuild_single_label_cache(account, label).await?;
+        if !account.minimal_sync() {
+            for label in &missing_labels {
+                //During incremental synchronization, if any labels are found missing or not fully synchronized, the checkpoint does not need to be updated.
+                rebuild_single_label_cache(account, label).await?;
+            }
         }
     }
     AccountRunningState::set_incremental_sync_end(account.id).await?;
@@ -148,9 +154,12 @@ pub async fn should_rebuild_cache(
     if checkpoint.is_some() {
         GmailCheckPoint::clean(account.id).await?;
     }
-    GmailEnvelope::clean_account(account.id).await?;
-    AddressEntity::clean_account(account.id).await?;
-    EmailThread::clean_account(account.id).await?;
+
+    if !account.minimal_sync() {
+        GmailEnvelope::clean_account(account.id).await?;
+        AddressEntity::clean_account(account.id).await?;
+        EmailThread::clean_account(account.id).await?;
+    }
 
     info!(account_id = account.id, "Cache cleaning completed");
 
@@ -188,10 +197,13 @@ async fn cleanup_deleted_labels(
     deleted_labels: &[GmailLabels],
 ) -> RustMailerResult<()> {
     let start_time = Instant::now();
-    for label in deleted_labels {
-        GmailEnvelope::clean_label_envelopes(account.id, label.id).await?;
-        AddressEntity::clean_mailbox_envelopes(account.id, label.id).await?;
-        EmailThread::clean_mailbox_envelopes(account.id, label.id).await?;
+
+    if !account.minimal_sync() {
+        for label in deleted_labels {
+            GmailEnvelope::clean_label_envelopes(account.id, label.id).await?;
+            AddressEntity::clean_mailbox_envelopes(account.id, label.id).await?;
+            EmailThread::clean_mailbox_envelopes(account.id, label.id).await?;
+        }
     }
     GmailLabels::batch_delete(deleted_labels.to_vec()).await?;
     let elapsed_time = start_time.elapsed().as_secs();
@@ -204,9 +216,11 @@ async fn cleanup_deleted_labels(
 
 async fn cleanup_single_label(account: &AccountModel, label: &GmailLabels) -> RustMailerResult<()> {
     let start_time = Instant::now();
-    GmailEnvelope::clean_label_envelopes(account.id, label.id).await?;
-    AddressEntity::clean_mailbox_envelopes(account.id, label.id).await?;
-    EmailThread::clean_mailbox_envelopes(account.id, label.id).await?;
+    if !account.minimal_sync() {
+        GmailEnvelope::clean_label_envelopes(account.id, label.id).await?;
+        AddressEntity::clean_mailbox_envelopes(account.id, label.id).await?;
+        EmailThread::clean_mailbox_envelopes(account.id, label.id).await?;
+    }
     GmailLabels::delete(label.id).await?;
     let elapsed_time = start_time.elapsed().as_secs();
     info!(
@@ -214,4 +228,35 @@ async fn cleanup_single_label(account: &AccountModel, label: &GmailLabels) -> Ru
         elapsed_time
     );
     Ok(())
+}
+
+async fn save_latest_history_id(account: &AccountModel) -> RustMailerResult<()> {
+    // Fetch the most recent message
+    let result =
+        GmailClient::list_messages(account.id, account.use_proxy, None, None, None, 1).await?;
+    let first_message = match result.messages.as_ref().and_then(|m| m.first()) {
+        Some(msg) => msg,
+        None => return Ok(()),
+    };
+
+    // Retrieve the message details to get its history_id
+    let message =
+        GmailClient::get_message(account.id, account.use_proxy, &first_message.id).await?;
+    let start_history_id = &message.history_id;
+
+    // Fetch the latest history starting from the message's history_id
+    let history_list = GmailClient::list_history(
+        account.id,
+        account.use_proxy,
+        None,
+        start_history_id,
+        None,
+        1,
+    )
+    .await?;
+
+    // Save the latest history_id to ensure future incremental sync starts from the correct point
+    GmailCheckPoint::new(account.id, history_list.history_id)
+        .save()
+        .await
 }

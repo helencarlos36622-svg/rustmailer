@@ -784,7 +784,7 @@ message EmailEnvelope {
   Received received = 25;
   // The identifier of the thread this email belongs to.
   // This is computed based on `in_reply_to` / `references` / `message_id`.
-  uint64 thread_id = 26;
+  string thread_id = 26;
   // A list of labels applied to the message.
   // Each element is a string representing a Gmail label name (e.g., "INBOX", "UNREAD").
   // This field reflects the current labels associated with the email.
@@ -1029,11 +1029,12 @@ message ListThreadsRequest {
   // The name of the mailbox to list messages from.
   string mailbox_name = 2;
   // The requested page number (1-based).
-  uint64 page = 3;
+  optional string next_page_token = 3;
   // The number of messages to return per page.
   uint64 page_size = 4;
   // If true, results will be returned in descending order.
   bool desc = 5;
+  bool remote = 6;
 }
 
 
@@ -1042,7 +1043,8 @@ message GetThreadMessagesRequest {
   // The ID of the account.
   uint64 account_id = 1;
   // thread id.
-  uint64 thread_id = 2;
+  string thread_id = 2;
+  optional bool remote = 3;
 }
 
 // PagedMessages represents a paginated list of EmailEnvelope messages.
@@ -1167,7 +1169,7 @@ service MessageService {
   // Lists messages within a mailbox with pagination.
   rpc ListMessages(ListMessagesRequest) returns (CursorDataPage);
   // Lists threads within a mailbox with pagination.
-  rpc ListThreads(ListThreadsRequest) returns (PagedMessages);
+  rpc ListThreads(ListThreadsRequest) returns (CursorDataPage);
   // Get thread's envelopes within a mailbox.
   rpc GetThreadMessages(GetThreadMessagesRequest) returns (EmailEnvelopeList);
   // Fetches specific content parts (e.g., plain text, HTML) of an email message.

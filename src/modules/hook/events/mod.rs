@@ -185,7 +185,7 @@ impl RustMailerEvent {
                     attachments: None
                 },
                 thread_name: Some("Meeting Thread".into()),
-                thread_id: id!(64),
+                thread_id: id!(64).to_string(),
                 reply_to: Some(vec![addr("reply@example.com")]),
                 to: Some(vec![addr("recipient@example.com")]),
                 labels: vec![]

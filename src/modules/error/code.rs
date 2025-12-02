@@ -49,7 +49,6 @@ pub enum ErrorCode {
     MailBoxNotCached = 50050,
     AutoconfigFetchFailed = 50060,
     ApiCallFailed = 50070,
-    GmailApiInvalidHistoryId = 50080,
 
     // Message queue errors (60000–60999)
     NatsRequestFailed = 60000,
@@ -86,7 +85,6 @@ impl ErrorCode {
             | ErrorCode::AutoconfigFetchFailed
             | ErrorCode::ImapCommandFailed
             | ErrorCode::ApiCallFailed
-            | ErrorCode::GmailApiInvalidHistoryId
             | ErrorCode::ImapUnexpectedResult
             | ErrorCode::HttpResponseError
             | ErrorCode::NatsRequestFailed

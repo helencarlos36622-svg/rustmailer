@@ -47,7 +47,7 @@ pub struct EmailAddedToFolder {
     pub message: FullMessageContent,
     /// The identifier of the thread this email belongs to.
     /// This is computed based on `in_reply_to` / `references` / `message_id`.
-    pub thread_id: u64,
+    pub thread_id: String,
     /// Optional name of the thread to which the email belongs.
     pub thread_name: Option<String>,
     /// Optional list of reply-to addresses for the email.

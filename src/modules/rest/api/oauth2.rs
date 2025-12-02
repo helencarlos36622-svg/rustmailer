@@ -21,7 +21,6 @@ pub struct OAuth2Api;
 #[OpenApi(prefix_path = "/api/v1", tag = "ApiTags::OAuth2")]
 impl OAuth2Api {
     /// Retrieves the OAuth2 configuration for a specified name.
-    ///
     /// Requires root privileges.
     /// This endpoint fetches the OAuth2 configuration identified by the given name.
     #[oai(
@@ -46,7 +45,6 @@ impl OAuth2Api {
     }
 
     /// Deletes an OAuth2 configuration by name.
-    ///
     /// Requires root privileges.
     /// This endpoint removes the OAuth2 configuration identified by the specified name.
     #[oai(
@@ -65,7 +63,6 @@ impl OAuth2Api {
     }
 
     /// Creates a new OAuth2 configuration.
-    ///
     /// Requires root privileges.
     /// This endpoint creates a new OAuth2 configuration based on the provided request data.
     #[oai(
@@ -85,7 +82,6 @@ impl OAuth2Api {
     }
 
     /// Updates an existing OAuth2 configuration.
-    ///
     /// Requires root privileges.
     /// This endpoint updates the OAuth2 configuration identified by the specified name
     #[oai(
@@ -106,7 +102,6 @@ impl OAuth2Api {
     }
 
     /// Lists OAuth2 configurations with pagination and sorting options.
-    ///
     /// This endpoint retrieves a paginated list of OAuth2 configurations, allowing for
     /// optional pagination and sorting parameters. It requires root access.
     #[oai(
@@ -131,7 +126,6 @@ impl OAuth2Api {
     }
 
     /// Generates an OAuth2 authorization URL for a specific account.
-    ///
     /// This endpoint creates an authorization URL for the specified OAuth2 configuration
     /// and account ID. It requires root access and returns the URL as plain text.
     #[oai(
@@ -152,7 +146,6 @@ impl OAuth2Api {
     }
 
     /// Retrieves OAuth2 access tokens for a specified account.
-    ///
     /// This endpoint fetches the OAuth2 access tokens associated with the given account ID.
     #[oai(
         path = "/oauth2-tokens/:account_id",
@@ -178,7 +171,6 @@ impl OAuth2Api {
     }
 
     /// Configures an external OAuth2 token for a specified account.
-    ///
     /// This endpoint allows two usage modes:
     /// 1. If only an `access_token` is provided, RustMailer will store it directly.
     ///    - In this mode, RustMailer **cannot refresh** the token, since it has no
@@ -190,7 +182,6 @@ impl OAuth2Api {
     ///    - Since the OAuth2 configuration (including client_id and client_secret)
     ///      is already stored in RustMailer, the service can use the refresh token
     ///      to obtain new access tokens automatically.
-    ///
     /// Note: The `oauth2_id` must reference a valid OAuth2 configuration
     /// already created in RustMailer.
     #[oai(

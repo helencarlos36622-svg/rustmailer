@@ -219,13 +219,14 @@ impl MessageService for RustMailerMessageService {
     async fn list_threads(
         &self,
         request: Request<ListThreadsRequest>,
-    ) -> Result<Response<PagedMessages>, Status> {
+    ) -> Result<Response<CursorDataPage>, Status> {
         let req = require_account_access(request, |r| r.account_id)?;
         let result = list_threads_in_mailbox(
             req.account_id,
             &req.mailbox_name,
-            req.page,
+            req.next_page_token.as_deref(),
             req.page_size,
+            req.remote,
             req.desc,
         )
         .await?;
@@ -238,7 +239,8 @@ impl MessageService for RustMailerMessageService {
         request: Request<GetThreadMessagesRequest>,
     ) -> Result<Response<EmailEnvelopeList>, Status> {
         let req = require_account_access(request, |r| r.account_id)?;
-        let envelopes = get_thread_messages(req.account_id, req.thread_id).await?;
+        let envelopes =
+            get_thread_messages(req.account_id, req.thread_id, req.remote.unwrap_or(false)).await?;
 
         Ok(Response::new(EmailEnvelopeList {
             items: envelopes.into_iter().map(|e| e.into()).collect(),

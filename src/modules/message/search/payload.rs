@@ -522,7 +522,7 @@ impl MessageSearchRequest {
 
         let query = self.search.to_gmail_api_search_command()?;
         let label_map: AHashMap<String, String> =
-            GmailClient::reverse_label_map(account.id, account.use_proxy, false).await?;
+            GmailClient::for_lookup_label_id(account.id, account.use_proxy, false).await?;
 
         let label_id = match self.mailbox.as_deref() {
             Some(name) => label_map.get(name).cloned().map(Some).ok_or_else(|| {
@@ -572,6 +572,8 @@ impl MessageSearchRequest {
             GmailClient::get_message(account_id, use_proxy, &index.id).await
         })
         .await?;
+
+        let label_map = GmailClient::for_get_label_name(account.id, account.use_proxy).await?;
 
         let envelopes: Vec<Envelope> = batch_messages
             .into_iter()
@@ -821,7 +823,7 @@ impl UnifiedSearchRequest {
                     })?
                     .into(),
                 MailerType::GmailApi => {
-                    let label_map = GmailClient::label_map(account_id, account.use_proxy).await?;
+                    let label_map = GmailClient::for_get_label_name(account_id, account.use_proxy).await?;
                     let envelope = GmailEnvelope::get(id).await?.ok_or_else(|| {
                         raise_error!(
                             format!(
