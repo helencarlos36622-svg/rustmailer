@@ -359,9 +359,7 @@ impl OutlookClient {
             "body": {
                 "contentType": content_type,
                 "content": content,
-            },
-            "isReadReceiptRequested": true,
-            "isRead": false
+            }
         });
         client.patch(&url, &access_token, &data).await?;
         let url = format!("https://graph.microsoft.com/v1.0/me/mailFolders/drafts");
