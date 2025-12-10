@@ -2,7 +2,7 @@
 // Licensed under RustMailer License Agreement v1.0
 // Unauthorized copying, modification, or distribution is prohibited.
 
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashSet};
 
 use mail_send::{
     mail_builder::{headers::address::Address, MessageBuilder},
@@ -23,6 +23,7 @@ use crate::{
                 outlook::sync::client::OutlookClient,
             },
         },
+        common::Addr,
         context::executors::RUST_MAIL_CONTEXT,
         error::{code::ErrorCode, RustMailerResult},
         mailbox::list::request_imap_all_mailbox_list,
@@ -66,6 +67,12 @@ pub struct AppendReplyToDraftRequest {
     /// This field is optional and can be used to provide HTML content.
     #[oai(validator(min_length = "1", max_length = "50000"))]
     pub html: Option<String>,
+    /// Indicates whether the reply should be created as “Reply All”.
+    ///
+    /// - `Some(true)` creates a 'Reply All' message.
+    /// - `Some(false)` creates a normal 'Reply' message.
+    /// - `None` is treated the same as `false` (normal 'Reply').
+    pub reply_all: Option<bool>,
 }
 
 impl AppendReplyToDraftRequest {
@@ -112,6 +119,7 @@ impl AppendReplyToDraftRequest {
                     &self.id,
                     self.text.as_deref(),
                     self.html.as_deref(),
+                    self.reply_all.unwrap_or_default(),
                 )
                 .await
             }
@@ -148,8 +156,8 @@ impl AppendReplyToDraftRequest {
             account.name.as_ref().map(|n| Cow::Owned(n.to_string())),
             Cow::Owned(account.email.clone()),
         );
-
-        let to = match &envelope.reply_to {
+        //reply
+        let mut to = match &envelope.reply_to {
             Some(reply_to) if !reply_to.is_empty() => reply_to.clone(),
             _ => envelope
                 .from
@@ -162,6 +170,17 @@ impl AppendReplyToDraftRequest {
                     )
                 })?,
         };
+
+        if self.reply_all.unwrap_or_default() {
+            if let Some(to_list) = &envelope.to {
+                to.extend(to_list.clone());
+            }
+            if let Some(cc_list) = &envelope.cc {
+                to.extend(cc_list.clone());
+            }
+            Self::dedupe_addrs(&mut to);
+            Self::remove_self(&mut to, &account.email);
+        }
 
         let subject = format!("Re: {}", envelope.subject.as_deref().unwrap_or(""));
         let mut builder = MessageBuilder::new()
@@ -202,6 +221,30 @@ impl AppendReplyToDraftRequest {
         })
     }
 
+    fn dedupe_addrs(addrs: &mut Vec<Addr>) {
+        let mut seen = HashSet::new();
+
+        addrs.retain(|addr| {
+            if let Some(email) = &addr.address {
+                let email_lower = email.to_lowercase();
+                if seen.contains(&email_lower) {
+                    return false;
+                }
+                seen.insert(email_lower);
+            }
+            true
+        });
+    }
+
+    fn remove_self(addrs: &mut Vec<Addr>, my_email: &str) {
+        let my_email_lower = my_email.trim().to_lowercase();
+
+        addrs.retain(|addr| match &addr.address {
+            Some(addr_email) => addr_email.trim().to_lowercase() != my_email_lower,
+            None => true,
+        });
+    }
+
     async fn append_reply_to_draft_gmail(
         &self,
         account: &AccountModel,
@@ -214,7 +257,7 @@ impl AppendReplyToDraftRequest {
             Cow::Owned(account.email.clone()),
         );
 
-        let to = match &envelope.reply_to {
+        let mut to = match &envelope.reply_to {
             Some(reply_to) if !reply_to.is_empty() => reply_to.clone(),
             _ => envelope
                 .from
@@ -227,6 +270,17 @@ impl AppendReplyToDraftRequest {
                     )
                 })?,
         };
+
+        if self.reply_all.unwrap_or_default() {
+            if let Some(to_list) = &envelope.to {
+                to.extend(to_list.clone());
+            }
+            if let Some(cc_list) = &envelope.cc {
+                to.extend(cc_list.clone());
+            }
+            Self::dedupe_addrs(&mut to);
+            Self::remove_self(&mut to, &account.email);
+        }
 
         let subject = format!("Re: {}", envelope.subject.as_deref().unwrap_or(""));
         let mut builder = MessageBuilder::new()

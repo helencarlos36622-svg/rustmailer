@@ -613,6 +613,7 @@ impl From<rustmailer_grpc::AppendReplyToDraftRequest> for AppendReplyToDraftRequ
             preview: value.preview,
             text: value.text,
             html: value.html,
+            reply_all: value.reply_all,
         }
     }
 }

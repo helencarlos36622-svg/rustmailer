@@ -193,6 +193,7 @@ async fn test6() {
         text: Some("hello world.".into()),
         html: None,
         draft_folder_path: Some("[Gmail]/Drafts".into()),
+        reply_all: None,
     };
 
     let mut request = poem_grpc::Request::new(request);
@@ -253,6 +254,7 @@ async fn test8() {
         html: None,
         draft_folder_path: None,
         id: "1970d297da3c2dd2".into(),
+        reply_all: None,
     };
 
     let mut request = poem_grpc::Request::new(request);

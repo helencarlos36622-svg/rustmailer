@@ -332,8 +332,13 @@ impl OutlookClient {
         mid: &str,
         text: Option<&str>,
         html: Option<&str>,
+        reply_all: bool
     ) -> RustMailerResult<ReplyDraft> {
-        let url = format!("https://graph.microsoft.com/v1.0/me/messages/{mid}/createReply");
+        let url = if reply_all {
+            format!("https://graph.microsoft.com/v1.0/me/messages/{mid}/createReplyAll")
+        } else {
+            format!("https://graph.microsoft.com/v1.0/me/messages/{mid}/createReply")
+        };
         let client = HttpClient::new(use_proxy).await?;
         let access_token = Self::get_access_token(account_id).await?;
         let value = client

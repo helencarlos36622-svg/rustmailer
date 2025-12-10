@@ -1154,6 +1154,9 @@ message AppendReplyToDraftRequest {
     // For example: "[Gmail]/Drafts".
     // For Gmail API accounts, this field is ignored.
     optional string draft_folder_path = 7;
+    // Whether to create a reply-all message.
+    // Defaults to false when not set.
+    optional bool reply_all = 8;
 }
 
 // MessageService provides APIs for interacting with email messages.
