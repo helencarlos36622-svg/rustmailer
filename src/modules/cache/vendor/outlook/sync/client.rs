@@ -5,11 +5,11 @@ use tracing::error;
 use crate::{
     modules::{
         cache::vendor::outlook::model::{
-            MailFolder, MailFoldersResponse, Message, MessageListResponse,
+            CategoriesListResponse, Category, MailFolder, MailFoldersResponse, Message, MessageListResponse
         },
         common::http::HttpClient,
-        error::{code::ErrorCode, RustMailerResult},
-        message::append::ReplyDraft,
+        error::{RustMailerResult, code::ErrorCode},
+        message::{append::ReplyDraft},
         oauth2::token::OAuth2AccessToken,
     },
     raise_error,
@@ -459,6 +459,7 @@ impl OutlookClient {
         use_proxy: Option<u64>,
         updates: &[MessageCategoryUpdate],
     ) -> RustMailerResult<()> {
+        tracing::debug!("{:#?}", updates);
         let url = "https://graph.microsoft.com/v1.0/$batch";
         let client = HttpClient::new(use_proxy).await?;
         let access_token = Self::get_access_token(account_id).await?;
@@ -520,6 +521,43 @@ impl OutlookClient {
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn list_categories(
+        account_id: u64,
+        use_proxy: Option<u64>
+    ) -> RustMailerResult<Vec<Category>> {
+        let url = "https://graph.microsoft.com/v1.0/me/outlook/masterCategories".to_string();
+        let client = HttpClient::new(use_proxy).await?;
+        let access_token = Self::get_access_token(account_id).await?;
+        let value = client.get(url.as_str(), &access_token).await?;
+        let list = serde_json::from_value::<CategoriesListResponse>(value)
+            .map_err(|e| raise_error!(format!(
+                "Failed to deserialize Graph API response into CategoriesListResponse: {:#?}. Possible model mismatch or API change.",
+                e
+            ), ErrorCode::InternalError))?;
+        Ok(list.value)
+    }
+
+    pub async fn create_categories(
+        account_id: u64,
+        use_proxy: Option<u64>,
+        name: &str,
+        color: &str
+    ) -> RustMailerResult<()> {
+        let url = "https://graph.microsoft.com/v1.0/me/outlook/masterCategories";
+        let client = HttpClient::new(use_proxy).await?;
+        let access_token = Self::get_access_token(account_id).await?;
+        
+        let data = json!({
+            "color": color,
+            "displayName": name
+        });
+
+        client
+            .post(url, &access_token, Some(&data), false)
+            .await?;
         Ok(())
     }
 
@@ -635,6 +673,7 @@ impl OutlookClient {
     }
 }
 
+#[derive(Debug)]
 pub struct MessageCategoryUpdate {
     pub mid: String,
     pub categories: Vec<String>,

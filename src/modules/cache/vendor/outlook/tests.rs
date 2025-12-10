@@ -10,7 +10,9 @@ use std::{fs::File, future::Future, io::Write, pin::Pin, time::Duration};
 
 use crate::{
     modules::{
-        cache::vendor::outlook::model::{MailFolder, MailFoldersResponse, MessageListResponse},
+        cache::vendor::outlook::model::{
+            CategoriesListResponse, MailFolder, MailFoldersResponse, MessageListResponse,
+        },
         common::rustls::RustMailerTls,
         context::Initialize,
         error::{code::ErrorCode, RustMailerResult},
@@ -594,8 +596,6 @@ async fn move_message() {
     }
 }
 
-
-
 #[tokio::test]
 async fn get_thread_messages() {
     let access_token = access_token().await;
@@ -628,6 +628,70 @@ async fn get_thread_messages() {
 
     if res.status().is_success() {
         let body: MessageListResponse = res.json().await.unwrap();
+        println!("{:#?}", body);
+    } else {
+        eprintln!("Error: {} - {:?}", res.status(), res.text().await.unwrap());
+    }
+}
+
+#[tokio::test]
+async fn list_categories() {
+    let access_token = access_token().await;
+    let url = "https://graph.microsoft.com/v1.0/me/outlook/masterCategories".to_string();
+    let client = reqwest::Client::builder()
+        .user_agent(rustmailer_version!())
+        .timeout(Duration::from_secs(10))
+        .connect_timeout(Duration::from_secs(10))
+        .proxy(reqwest::Proxy::all("http://127.0.0.1:22307").unwrap())
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
+    let res = client
+        .get(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", access_token))
+        .header(CONTENT_TYPE, "application/json")
+        .send()
+        .await
+        .unwrap();
+
+    if res.status().is_success() {
+        let body: CategoriesListResponse = res.json().await.unwrap();
+        println!("{:#?}", body);
+    } else {
+        eprintln!("Error: {} - {:?}", res.status(), res.text().await.unwrap());
+    }
+}
+
+#[tokio::test]
+async fn create_categories() {
+    let access_token = access_token().await;
+    let url = "https://graph.microsoft.com/v1.0/me/outlook/masterCategories".to_string();
+    let client = reqwest::Client::builder()
+        .user_agent(rustmailer_version!())
+        .timeout(Duration::from_secs(10))
+        .connect_timeout(Duration::from_secs(10))
+        .proxy(reqwest::Proxy::all("http://127.0.0.1:22307").unwrap())
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
+    let data = json!({
+      "color": "Preset19",
+      "displayName": "hangzhou"
+    });
+
+    let res = client
+        .post(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", access_token))
+        .header(CONTENT_TYPE, "application/json")
+        .json(&data)
+        .send()
+        .await
+        .unwrap();
+
+    if res.status().is_success() {
+        let body: serde_json::Value = res.json().await.unwrap();
         println!("{:#?}", body);
     } else {
         eprintln!("Error: {} - {:?}", res.status(), res.text().await.unwrap());

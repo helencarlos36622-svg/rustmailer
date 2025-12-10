@@ -4,9 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use poem_openapi::{Enum, Object};
-use serde::{Deserialize, Serialize};
-
+use crate::modules::mailbox::create::LabelColor;
 use crate::{
     modules::{
         account::{entity::MailerType, migration::AccountModel},
@@ -24,6 +22,8 @@ use crate::{
     },
     raise_error,
 };
+use poem_openapi::{Enum, Object};
+use serde::{Deserialize, Serialize};
 
 const MAX_MESSAGE_IDS: usize = 50;
 
@@ -40,6 +40,50 @@ pub enum TagAction {
     Set,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize, Object)]
+pub struct TagAndColor {
+    /// Name of the label or category.
+    ///
+    /// - For **Gmail**, this is the label name.  
+    /// - For **IMAP**, this represents the custom IMAP flag name.  
+    /// - For **Microsoft Graph**, this is the category name.
+    pub name: String,
+    /// Represents the color settings for an Outlook category in RustMailer.
+    ///
+    /// Only used by Microsoft Graph API accounts.
+    /// `color` is optional and follows Outlook’s predefined color presets.
+    ///
+    /// Allowed values:
+    /// - `"None"` – No color mapped  
+    /// - `"Preset0"` – Red  
+    /// - `"Preset1"` – Orange  
+    /// - `"Preset2"` – Brown  
+    /// - `"Preset3"` – Yellow  
+    /// - `"Preset4"` – Green  
+    /// - `"Preset5"` – Teal  
+    /// - `"Preset6"` – Olive  
+    /// - `"Preset7"` – Blue  
+    /// - `"Preset8"` – Purple  
+    /// - `"Preset9"` – Cranberry  
+    /// - `"Preset10"` – Steel  
+    /// - `"Preset11"` – DarkSteel  
+    /// - `"Preset12"` – Gray  
+    /// - `"Preset13"` – DarkGray  
+    /// - `"Preset14"` – Black  
+    /// - `"Preset15"` – DarkRed  
+    /// - `"Preset16"` – DarkOrange  
+    /// - `"Preset17"` – DarkBrown  
+    /// - `"Preset18"` – DarkYellow  
+    /// - `"Preset19"` – DarkGreen  
+    /// - `"Preset20"` – DarkTeal  
+    /// - `"Preset21"` – DarkOlive  
+    /// - `"Preset22"` – DarkBlue  
+    /// - `"Preset23"` – DarkPurple  
+    /// - `"Preset24"` – DarkCranberry
+    pub graph_color: Option<String>,
+    pub gmail_color: Option<LabelColor>,
+}
+
 /// The unified request payload for batch tagging operations across different email APIs (e.g., Gmail, Graph).
 /// This structure abstracts the intention of modifying tags on a batch of messages.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize, Object)]
@@ -47,9 +91,9 @@ pub struct BatchTagRequest {
     /// Required: A list of unique identifiers (Message IDs) for the emails to be operated on.
     pub message_ids: Vec<String>,
 
-    /// Required: The list of tags (which could be Label IDs for Gmail or Category Names for Graph API)
+    /// Required: The list of tags (which could be Gmail Label Names or Category Names for Graph API)
     /// to be added, removed, or set.
-    pub tags: Vec<String>,
+    pub tags: Vec<TagAndColor>,
 
     /// Required: The action to be performed on the 'tags' list.
     pub action: TagAction,
@@ -58,11 +102,14 @@ pub struct BatchTagRequest {
     /// Example: "INBOX", "Sent Items", "Project X/Subfolder"
     pub mailbox_name: Option<String>,
 
-    /// Optional: **Used only in the Gmail API scenario.**
-    /// Specifies whether a tag/Label should be automatically created if it does not exist
-    /// when referenced in the request.
-    /// - If set to 'None' or 'false', an error will be returned if the tag is not found.
-    /// - **This field will be ignored in other MailerTypes (e.g., IMAP).**
+    /// Optional: Used in both Gmail API and Microsoft Graph API scenarios.
+    /// Indicates whether a label/category should be automatically created
+    /// if it does not already exist when referenced.
+    ///
+    /// - If set to `None` or `false`, an error will be returned when the label/category
+    ///   is not found.
+    /// - Ignored for IMAP accounts, since IMAP does not support creating labels or flags
+    ///   dynamically.
     pub auto_create_tags: Option<bool>,
 }
 
@@ -128,7 +175,7 @@ pub async fn tag_messages_impl(account_id: u64, payload: BatchTagRequest) -> Rus
                 .into_iter()
                 .map(|tag| EnvelopeFlag {
                     flag: EmailFlag::Custom,
-                    custom: Some(tag),
+                    custom: Some(tag.name),
                 })
                 .collect();
             let executor = RUST_MAIL_CONTEXT.imap(account_id).await?;
@@ -175,8 +222,8 @@ pub async fn tag_messages_impl(account_id: u64, payload: BatchTagRequest) -> Rus
                 GmailClient::for_lookup_label_id(account_id, account.use_proxy, true).await?;
             let tags_to_process = &payload.tags;
             let mut target_label_ids: Vec<String> = Vec::with_capacity(tags_to_process.len());
-            for tag_name in tags_to_process {
-                match labels_map.get(tag_name) {
+            for tag in tags_to_process {
+                match labels_map.get(&tag.name) {
                     Some(label_id) => {
                         target_label_ids.push(label_id.clone());
                     }
@@ -186,9 +233,9 @@ pub async fn tag_messages_impl(account_id: u64, payload: BatchTagRequest) -> Rus
                                 account_id,
                                 account.use_proxy,
                                 &CreateMailboxRequest {
-                                    mailbox_name: tag_name.to_string(),
+                                    mailbox_name: tag.name.clone(),
                                     parent_name: None,
-                                    label_color: None,
+                                    label_color: tag.gmail_color.clone(),
                                 },
                             )
                             .await?;
@@ -196,9 +243,9 @@ pub async fn tag_messages_impl(account_id: u64, payload: BatchTagRequest) -> Rus
                         } else {
                             return Err(raise_error!(
                                format!(
-                                    "Tag/Label name `{}` not found in Gmail labels map. \
+                                    "Tag/Label name `{:#?}` not found in Gmail labels map. \
                                     If you intend to create this label automatically, please ensure the `auto_create_tags` parameter is set to true.",
-                                    tag_name
+                                    tag
                                 ),
                                 ErrorCode::InvalidParameter
                             ));
@@ -217,6 +264,9 @@ pub async fn tag_messages_impl(account_id: u64, payload: BatchTagRequest) -> Rus
                     remove_ids = target_label_ids;
                 }
                 TagAction::Set => {
+                    let tags_to_process: Vec<String> =
+                        payload.tags.iter().map(|t| t.name.clone()).collect();
+
                     let to_remove_labels: Vec<String> =
                         GmailClient::list_labels(account_id, account.use_proxy)
                             .await?
@@ -241,7 +291,47 @@ pub async fn tag_messages_impl(account_id: u64, payload: BatchTagRequest) -> Rus
             .await?;
         }
         MailerType::GraphApi => {
-            let tags_to_operate: HashSet<&String> = payload.tags.iter().collect();
+            let all = OutlookClient::list_categories(account_id, account.use_proxy).await?;
+            let existing_names: HashSet<String> =
+                all.iter().map(|c| c.display_name.clone()).collect();
+
+            let missing_tags: Vec<&TagAndColor> = payload
+                .tags
+                .iter()
+                .filter(|t| !existing_names.contains(&t.name))
+                .collect();
+
+            if let Some(true) = payload.auto_create_tags {
+                for missing_tag in missing_tags {
+                    OutlookClient::create_categories(
+                        account_id,
+                        account.use_proxy,
+                        &missing_tag.name,
+                        &missing_tag
+                            .graph_color.clone()
+                            .ok_or_else(|| raise_error!("auto_create_tags requires a valid 'graph_color' when creating categories".into(), ErrorCode::InvalidParameter))?,
+                    )
+                    .await?;
+                }
+            } else {
+                if !missing_tags.is_empty() {
+                    return Err(raise_error!(
+                        format!(
+                            "The following categories do not exist and cannot be created automatically: {}. \
+                            Enable auto_create_tags or provide valid existing category names.",
+                            missing_tags
+                                .iter()
+                                .map(|t| t.name.clone())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                        ErrorCode::InvalidParameter
+                    ));
+                }
+            }
+
+            let tags_to_operate: HashSet<&String> = payload.tags.iter().map(|t| &t.name).collect();
+            //let tags_to_operate: HashSet<&String> = HashSet::new();
 
             let existing_categories_map: HashMap<String, Vec<String>> = match payload.action {
                 TagAction::Set => HashMap::new(),
@@ -266,7 +356,7 @@ pub async fn tag_messages_impl(account_id: u64, payload: BatchTagRequest) -> Rus
                         let mut new_categories_set: HashSet<String> =
                             current_cats.into_iter().collect();
                         for tag in &payload.tags {
-                            new_categories_set.insert(tag.clone());
+                            new_categories_set.insert(tag.name.clone());
                         }
 
                         update_instructions.push(MessageCategoryUpdate {
@@ -298,7 +388,7 @@ pub async fn tag_messages_impl(account_id: u64, payload: BatchTagRequest) -> Rus
                     for mid in &payload.message_ids {
                         update_instructions.push(MessageCategoryUpdate {
                             mid: mid.clone(),
-                            categories: payload.tags.clone(),
+                            categories: tags_to_operate.iter().map(|t| t.to_string()).collect(),
                         });
                     }
                 }

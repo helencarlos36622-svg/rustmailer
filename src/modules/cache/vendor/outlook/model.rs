@@ -160,3 +160,19 @@ pub struct PartialMessage {
 pub struct RemovedInfo {
     pub reason: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CategoriesListResponse {
+    #[serde(rename = "@odata.context")]
+    pub context: Option<String>,
+
+    pub value: Vec<Category>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Category {
+    pub id: String,
+    #[serde(rename = "displayName")]
+    pub display_name: String,
+    pub color: String,
+}
