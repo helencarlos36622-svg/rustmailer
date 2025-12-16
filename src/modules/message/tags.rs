@@ -54,32 +54,32 @@ pub struct TagAndColor {
     /// `color` is optional and follows Outlook’s predefined color presets.
     ///
     /// Allowed values:
-    /// - `"None"` – No color mapped  
-    /// - `"Preset0"` – Red  
-    /// - `"Preset1"` – Orange  
-    /// - `"Preset2"` – Brown  
-    /// - `"Preset3"` – Yellow  
-    /// - `"Preset4"` – Green  
-    /// - `"Preset5"` – Teal  
-    /// - `"Preset6"` – Olive  
-    /// - `"Preset7"` – Blue  
-    /// - `"Preset8"` – Purple  
-    /// - `"Preset9"` – Cranberry  
-    /// - `"Preset10"` – Steel  
-    /// - `"Preset11"` – DarkSteel  
-    /// - `"Preset12"` – Gray  
-    /// - `"Preset13"` – DarkGray  
-    /// - `"Preset14"` – Black  
-    /// - `"Preset15"` – DarkRed  
-    /// - `"Preset16"` – DarkOrange  
-    /// - `"Preset17"` – DarkBrown  
-    /// - `"Preset18"` – DarkYellow  
-    /// - `"Preset19"` – DarkGreen  
-    /// - `"Preset20"` – DarkTeal  
-    /// - `"Preset21"` – DarkOlive  
-    /// - `"Preset22"` – DarkBlue  
-    /// - `"Preset23"` – DarkPurple  
-    /// - `"Preset24"` – DarkCranberry
+    /// - `"none"` – No color mapped  
+    /// - `"preset0"` – Red  
+    /// - `"preset1"` – Orange  
+    /// - `"preset2"` – Brown  
+    /// - `"preset3"` – Yellow  
+    /// - `"preset4"` – Green  
+    /// - `"preset5"` – Teal  
+    /// - `"preset6"` – Olive  
+    /// - `"preset7"` – Blue  
+    /// - `"preset8"` – Purple  
+    /// - `"preset9"` – Cranberry  
+    /// - `"preset10"` – Steel  
+    /// - `"preset11"` – DarkSteel  
+    /// - `"preset12"` – Gray  
+    /// - `"preset13"` – DarkGray  
+    /// - `"preset14"` – Black  
+    /// - `"preset15"` – DarkRed  
+    /// - `"preset16"` – DarkOrange  
+    /// - `"preset17"` – DarkBrown  
+    /// - `"preset18"` – DarkYellow  
+    /// - `"preset19"` – DarkGreen  
+    /// - `"preset20"` – DarkTeal  
+    /// - `"preset21"` – DarkOlive  
+    /// - `"preset22"` – DarkBlue  
+    /// - `"preset23"` – DarkPurple  
+    /// - `"preset24"` – DarkCranberry
     pub graph_color: Option<String>,
     pub gmail_color: Option<LabelColor>,
 }
