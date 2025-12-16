@@ -460,7 +460,7 @@ async fn create_reply_draft() {
     let access_token = access_token().await;
     let url = format!(
         "https://graph.microsoft.com/v1.0/me/messages/{}/createReply",
-        "AQMkADAwATMwMAItNzE0OC1jZTEzLTAwAi0wMAoARgAAA_KUk7xWPSBEntPHShr61lgHAOo9V4GwHndCjf0x1uoIcwUAAAIBDAAAAOo9V4GwHndCjf0x1uoIcwUAAYiJVIAAAAA="
+        "AQMkADAwATMwMAItNzE0OC1jZTEzLTAwAi0wMAoARgAAA_KUk7xWPSBEntPHShr61lgHAOo9V4GwHndCjf0x1uoIcwUAAAIBDAAAAOo9V4GwHndCjf0x1uoIcwUAAauT-moAAAA="
     );
     let client = reqwest::Client::builder()
         .user_agent(rustmailer_version!())
@@ -471,12 +471,51 @@ async fn create_reply_draft() {
         .build()
         .unwrap();
 
-    let mut nextlink_count = 0;
-
     let res = client
         .post(&url)
         .header(AUTHORIZATION, format!("Bearer {}", access_token))
         .header(CONTENT_TYPE, "application/json")
+        .send()
+        .await
+        .unwrap();
+
+    if res.status().is_success() {
+        let body: serde_json::Value = res.json().await.unwrap();
+        println!("{:#?}", body);
+    } else {
+        eprintln!("Error: {} - {:?}", res.status(), res.text().await.unwrap());
+    }
+}
+
+#[tokio::test]
+async fn patch_reply_draft() {
+    let access_token = access_token().await;
+    let url = format!(
+        "https://graph.microsoft.com/v1.0/me/messages/{}",
+        "AQMkADAwATMwMAItNzE0OC1jZTEzLTAwAi0wMAoARgAAA_KUk7xWPSBEntPHShr61lgHAOo9V4GwHndCjf0x1uoIcwUAAAIBDwAAAOo9V4GwHndCjf0x1uoIcwUAAauT6uAAAAA="
+    );
+    let client = reqwest::Client::builder()
+        .user_agent(rustmailer_version!())
+        .timeout(Duration::from_secs(10))
+        .connect_timeout(Duration::from_secs(10))
+        .proxy(reqwest::Proxy::all("http://127.0.0.1:22307").unwrap())
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
+    let data = json!({
+        "body": {
+            "contentType": "text",
+            "content": "hello world",
+        },
+        "isRead": false
+    });
+
+    let res = client
+        .patch(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", access_token))
+        .header(CONTENT_TYPE, "application/json")
+        .json(&data)
         .send()
         .await
         .unwrap();

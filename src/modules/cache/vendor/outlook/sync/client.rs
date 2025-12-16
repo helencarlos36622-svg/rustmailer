@@ -364,9 +364,17 @@ impl OutlookClient {
             "body": {
                 "contentType": content_type,
                 "content": content,
-            }
+            },
+            "isRead": false
         });
         client.patch(&url, &access_token, &data).await?;
+
+        let url = format!("https://graph.microsoft.com/v1.0/me/messages/{mid}");
+        let data = json!({
+            "isRead": false
+        });
+        client.patch(&url, &access_token, &data).await?;
+
         let url = format!("https://graph.microsoft.com/v1.0/me/mailFolders/drafts");
         let value = client.get(&url, &access_token).await.map_err(|e| {
             raise_error!(format!("Request error: {e:#?}"), ErrorCode::InternalError)
