@@ -303,7 +303,7 @@ pub async fn tag_messages_impl(account_id: u64, payload: BatchTagRequest) -> Rus
 
             if let Some(true) = payload.auto_create_tags {
                 for missing_tag in missing_tags {
-                    OutlookClient::create_categories(
+                    if let Err(e) = OutlookClient::create_categories(
                         account_id,
                         account.use_proxy,
                         &missing_tag.name,
@@ -311,7 +311,13 @@ pub async fn tag_messages_impl(account_id: u64, payload: BatchTagRequest) -> Rus
                             .graph_color.clone()
                             .ok_or_else(|| raise_error!("auto_create_tags requires a valid 'graph_color' when creating categories".into(), ErrorCode::InvalidParameter))?,
                     )
-                    .await?;
+                    .await {
+                        tracing::warn!(
+                            "Failed to create outlook category '{}': {}",
+                            missing_tag.name,
+                            e
+                        );
+                    }
                 }
             } else {
                 if !missing_tags.is_empty() {
