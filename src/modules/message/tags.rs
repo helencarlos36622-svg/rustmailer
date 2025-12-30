@@ -291,49 +291,53 @@ pub async fn tag_messages_impl(account_id: u64, payload: BatchTagRequest) -> Rus
             .await?;
         }
         MailerType::GraphApi => {
-            let all = OutlookClient::list_categories(account_id, account.use_proxy).await?;
-            let existing_names: HashSet<String> =
-                all.iter().map(|c| c.display_name.clone()).collect();
+            match OutlookClient::list_categories(account_id, account.use_proxy).await {
+                Ok(all) => {
+                    let existing_names: HashSet<String> =
+                        all.iter().map(|c| c.display_name.clone()).collect();
 
-            let missing_tags: Vec<&TagAndColor> = payload
-                .tags
-                .iter()
-                .filter(|t| !existing_names.contains(&t.name))
-                .collect();
+                    let missing_tags: Vec<&TagAndColor> = payload
+                        .tags
+                        .iter()
+                        .filter(|t| !existing_names.contains(&t.name))
+                        .collect();
 
-            if let Some(true) = payload.auto_create_tags {
-                for missing_tag in missing_tags {
-                    if let Err(e) = OutlookClient::create_categories(
-                        account_id,
-                        account.use_proxy,
-                        &missing_tag.name,
-                        &missing_tag
-                            .graph_color.clone()
-                            .ok_or_else(|| raise_error!("auto_create_tags requires a valid 'graph_color' when creating categories".into(), ErrorCode::InvalidParameter))?,
-                    )
-                    .await {
-                        tracing::warn!(
-                            "Failed to create outlook category '{}': {}",
-                            missing_tag.name,
-                            e
-                        );
+                    if let Some(true) = payload.auto_create_tags {
+                        for missing_tag in missing_tags {
+                            if let Err(e) = OutlookClient::create_categories(
+                                account_id,
+                                account.use_proxy,
+                                &missing_tag.name,
+                                &missing_tag
+                                    .graph_color.clone()
+                                    .ok_or_else(|| raise_error!("auto_create_tags requires a valid 'graph_color' when creating categories".into(), ErrorCode::InvalidParameter))?,
+                            )
+                            .await {
+                                tracing::error!(
+                                    "Failed to create outlook category '{}': {}",
+                                    missing_tag.name,
+                                    e
+                                );
+                            }
+                        }
+                    } else {
+                        if !missing_tags.is_empty() {
+                            return Err(raise_error!(
+                                format!(
+                                    "The following categories do not exist and cannot be created automatically: {}. \
+                                    Enable auto_create_tags or provide valid existing category names.",
+                                    missing_tags
+                                        .iter()
+                                        .map(|t| t.name.clone())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                ),
+                                ErrorCode::InvalidParameter
+                            ));
+                        }
                     }
                 }
-            } else {
-                if !missing_tags.is_empty() {
-                    return Err(raise_error!(
-                        format!(
-                            "The following categories do not exist and cannot be created automatically: {}. \
-                            Enable auto_create_tags or provide valid existing category names.",
-                            missing_tags
-                                .iter()
-                                .map(|t| t.name.clone())
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        ),
-                        ErrorCode::InvalidParameter
-                    ));
-                }
+                Err(e) => tracing::error!("Failed to list outlook categories: {}", e),
             }
 
             let tags_to_operate: HashSet<&String> = payload.tags.iter().map(|t| &t.name).collect();
