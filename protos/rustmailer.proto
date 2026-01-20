@@ -818,7 +818,7 @@ message FetchMessageAttachmentRequest {
   // The unique ID of the message, either IMAP UID or Gmail API MID.
   // - For IMAP accounts, this is the UID converted to a string. It must be a valid numeric string
   //   that can be parsed back to a `u32`.
-  // - For Gmail API accounts, this is the message ID (`mid`) returned by the API.
+  // - For Gmail/Graph API accounts, this is the message ID (`mid`) returned by the API.
   string id = 2;
   // The name of the mailbox containing the message.
   optional string mailbox_name = 3;
@@ -829,6 +829,9 @@ message FetchMessageAttachmentRequest {
   // Optional: The filename of the attachment.  
   // - Gmail API only.  
   optional string filename = 6;
+  // Optional: The id of the attachment.  
+  // - Graph API only.  
+  optional string attachment_id = 7;
 }
 
 // FetchRawMessageRequest is used to fetch the complete raw content of an email message.

@@ -32,6 +32,7 @@ pub mod flow;
 pub mod folders;
 pub mod rebuild;
 pub mod sync_folders;
+
 pub async fn execute_outlook_sync(account: &AccountModel) -> RustMailerResult<()> {
     assert!(
         matches!(account.mailer_type, MailerType::GraphApi),

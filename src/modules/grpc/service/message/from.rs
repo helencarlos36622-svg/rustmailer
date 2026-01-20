@@ -479,6 +479,7 @@ impl TryFrom<rustmailer_grpc::FetchMessageAttachmentRequest> for AttachmentReque
             attachment: value.attachment.map(|a| a.try_into()).transpose()?,
             attachment_info: value.attachment_info.map(|a| a.into()),
             filename: value.filename,
+            attachment_id: value.attachment_id,
         })
     }
 }

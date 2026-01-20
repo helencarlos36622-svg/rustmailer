@@ -217,6 +217,7 @@ impl MailAttachment {
                 attachment: Some(attachment_ref.attachment_data.clone()),
                 attachment_info: None,
                 filename: None,
+                attachment_id: None,
             },
         )
         .await?;

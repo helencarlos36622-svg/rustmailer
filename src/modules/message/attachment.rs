@@ -2,13 +2,14 @@
 // Licensed under RustMailer License Agreement v1.0
 // Unauthorized copying, modification, or distribution is prohibited.
 
-use crate::base64_decode_url_safe;
 use crate::modules::account::entity::MailerType;
 use crate::modules::cache::vendor::gmail::model::messages::PartBody;
 use crate::modules::cache::vendor::gmail::sync::client::GmailClient;
+use crate::modules::cache::vendor::outlook::sync::client::OutlookClient;
 use crate::modules::error::code::ErrorCode;
 use crate::modules::message::content::{AttachmentInfo, FullMessageContent};
 use crate::modules::message::get_minimal_meta;
+use crate::{base64_decode, base64_decode_url_safe};
 use crate::{
     encode_mailbox_name,
     modules::account::migration::AccountModel,
@@ -27,16 +28,16 @@ const MAX_ATTACHMENT_SIZE: usize = 52_428_800; // 50MB
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize, Object)]
 pub struct AttachmentRequest {
     /// IMAP only: The name of the mailbox where the message is located.
-    /// Not used for Gmail API accounts.
+    /// Not used for Gmail/Graph API accounts.
     pub mailbox: Option<String>,
     /// IMAP only: The metadata describing the attachment to fetch.
-    /// Not used for Gmail API accounts.
+    /// Not used for Gmail/Graph API accounts.
     pub attachment: Option<ImapAttachment>,
     /// The unique ID of the message, either IMAP UID or Gmail API MID.
     ///
     /// - For IMAP accounts, this is the UID converted to a string. It must be a valid numeric string
     ///   that can be parsed back to a `u32`.
-    /// - For Gmail API accounts, this is the message ID (`mid`) returned by the API.
+    /// - For Gmail/Graph API accounts, this is the message ID (`mid`) returned by the API.
     pub id: String,
     /// Gmail API only: attachment info used to fetch it via Gmail API.
     /// Not used for IMAP accounts.
@@ -44,6 +45,9 @@ pub struct AttachmentRequest {
     /// Optional: The original filename of the attachment, if available.  
     /// - Gmail API only.  
     pub filename: Option<String>,
+    /// Graph API only: attachment id used to fetch it via Graph API.
+    /// Not used for IMAP accounts.
+    pub attachment_id: Option<String>,
 }
 
 impl AttachmentRequest {
@@ -73,7 +77,14 @@ impl AttachmentRequest {
                     ));
                 }
             }
-            MailerType::GraphApi => todo!(),
+            MailerType::GraphApi => {
+                if self.attachment_id.is_none() {
+                    return Err(raise_error!(
+                        "Current account type is `Graph API`. Downloading attachments requires `attachment_id`.".into(),
+                        ErrorCode::InvalidParameter
+                    ));
+                }
+            }
         }
         Ok(())
     }
@@ -114,6 +125,10 @@ pub fn gmail_attachment_diskcache_key(
         mid,
         attachment_info.hash()
     )
+}
+
+pub fn graph_attachment_diskcache_key(account_id: u64, mid: &str, attachment_id: &str) -> String {
+    format!("graph_attachment_{}_{}_{}", account_id, mid, attachment_id)
 }
 
 pub fn gmail_inline_attachment_diskcache_key(
@@ -172,7 +187,12 @@ pub async fn retrieve_email_attachment(
             let reader = retrieve_gmail_attachment(&account, &request.id, &attachment_info).await?;
             Ok((reader, filename))
         }
-        MailerType::GraphApi => todo!(),
+        MailerType::GraphApi => {
+            let reader =
+                retrieve_graph_attachment(&account, &request.id, &request.attachment_id.unwrap())
+                    .await?;
+            Ok((reader, request.filename))
+        }
     }
 }
 
@@ -345,4 +365,25 @@ async fn retrieve_gmail_attachment(
             ErrorCode::ResourceNotFound
         )),
     }
+}
+
+async fn retrieve_graph_attachment(
+    account: &AccountModel,
+    mid: &str,
+    attachment_id: &str,
+) -> RustMailerResult<cacache::Reader> {
+    let cache_key = graph_attachment_diskcache_key(account.id, mid, attachment_id);
+    if let Some(reader) = DISK_CACHE.get_cache(&cache_key).await? {
+        return Ok(reader);
+    }
+
+    let base_64 =
+        OutlookClient::get_attachment(account.id, account.use_proxy, mid, attachment_id).await?;
+
+    let decoded = base64_decode!(base_64.as_bytes());
+    DISK_CACHE.put_cache(&cache_key, &decoded, false).await?;
+    DISK_CACHE
+        .get_cache(&cache_key)
+        .await?
+        .ok_or_else(|| raise_error!("Unexpected cache miss".into(), ErrorCode::InternalError))
 }

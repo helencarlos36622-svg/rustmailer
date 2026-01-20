@@ -79,7 +79,7 @@ export function MailDisplayDrawer({ open, setOpen, onOpenChange, currentEnvelope
   const [downloadingAttachmentId, setDownloadingAttachmentId] = useState<string | null>(null);
   const [content, setContent] = useState<string | null>(null);
 
-  const [gmailAttachments, setGmailAttachments] = useState<AttachmentInfo[] | null>(null);
+  const [gmailOrGraphAttachments, setGmailOrGraphAttachments] = useState<AttachmentInfo[] | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [contentType, setContentType] = useState<'Plain' | 'Html' | null>(null);
@@ -122,7 +122,7 @@ export function MailDisplayDrawer({ open, setOpen, onOpenChange, currentEnvelope
       setLoading(false)
       setContent(getContent(data))
       if (data.attachments) {
-        setGmailAttachments(data.attachments)
+        setGmailOrGraphAttachments(data.attachments)
       }
       if (data.html) {
         setContentType('Html');
@@ -154,12 +154,13 @@ export function MailDisplayDrawer({ open, setOpen, onOpenChange, currentEnvelope
   }
 
 
-  const onGmailAttachmentDownload = (attachment_info: AttachmentInfo) => {
+  const onGmailOrGraphAttachmentDownload = (attachment_info: AttachmentInfo) => {
     if (currentEnvelope) {
       let payload = {
         attachment_info,
         filename: attachment_info.filename,
-        id: currentEnvelope.id
+        id: currentEnvelope.id,
+        attachment_id: attachment_info.id
       };
       setDownloadingAttachmentId(attachment_info.id);
       downloadMutation.mutate({ accountId: currentAccountId!, fileName: attachment_info.filename, payload })
@@ -585,8 +586,8 @@ export function MailDisplayDrawer({ open, setOpen, onOpenChange, currentEnvelope
                         </div>
                       ))}
                     </div>
-                  ) : loading ? (<span className="text-gray-500 text-xs min-h-3" />) : gmailAttachments && gmailAttachments.length > 0 ? (<div className="space-y-2">
-                    {gmailAttachments.map((attachment, index) => (
+                  ) : loading ? (<span className="text-gray-500 text-xs min-h-3" />) : gmailOrGraphAttachments && gmailOrGraphAttachments.length > 0 ? (<div className="space-y-2">
+                    {gmailOrGraphAttachments.map((attachment, index) => (
                       <div key={index} className="flex items-center">
                         <div className="flex items-center space-x-8">
                           <span className="truncate text-xs">{attachment.filename}</span>
@@ -606,7 +607,7 @@ export function MailDisplayDrawer({ open, setOpen, onOpenChange, currentEnvelope
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                {downloadingAttachmentId === attachment.id ? <Loader className='w-4 h-4 mb-1 animate-spin' /> : <Download className='w-4 h-4 mb-1' onClick={() => onGmailAttachmentDownload(attachment)} />}
+                                {downloadingAttachmentId === attachment.id ? <Loader className='w-4 h-4 mb-1 animate-spin' /> : <Download className='w-4 h-4 mb-1' onClick={() => onGmailOrGraphAttachmentDownload(attachment)} />}
                               </TooltipTrigger>
                               <TooltipContent>
                                 <p className='text-xs'>Download</p>
