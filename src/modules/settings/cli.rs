@@ -97,7 +97,7 @@ pub struct Settings {
             Ok(set)
         })
     )]
-    pub rustmailer_cors_origins: HashSet<String>,
+    pub rustmailer_cors_origins: Option<HashSet<String>>,
 
     /// CORS max age in seconds (default: 86400)
     #[clap(

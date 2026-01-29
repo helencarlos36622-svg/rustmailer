@@ -83,10 +83,26 @@ pub async fn start_http_server() -> RustMailerResult<()> {
         .with(Timeout)
         .with(Tracing);
 
-    let mut cors_origins = SETTINGS.rustmailer_cors_origins.clone();
-    if cors_origins.is_empty() {
-        cors_origins = ["*".to_string()].into_iter().collect();
-    }
+    let cors_origins = SETTINGS.rustmailer_cors_origins.clone();
+    let cors_origins: Vec<String> = cors_origins.unwrap_or_default().into_iter().collect();
+
+    let cors = Cors::new()
+        .allow_origins_fn(move |origin| {
+            tracing::debug!("CORS: Incoming Origin = {:?}", origin);
+            tracing::debug!("CORS: Configured origins = {:?}", cors_origins);
+            if cors_origins.is_empty() {
+                tracing::debug!("CORS: No origins configured, allowing all");
+                return true;
+            }
+            cors_origins.iter().any(|o| o == origin)
+        })
+        .allow_credentials(true)
+        .allow_methods(vec![
+            "GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH",
+        ])
+        .allow_headers(vec!["Content-Type", "Authorization", TIMEOUT_HEADER])
+        .expose_headers(vec!["Accept"])
+        .max_age(SETTINGS.rustmailer_cors_max_age);
 
     let cache_static = || {
         SetHeader::new().overriding(
@@ -94,15 +110,6 @@ pub async fn start_http_server() -> RustMailerResult<()> {
             HeaderValue::from_static("max-age=86400"),
         )
     };
-
-    let cors = Cors::new()
-        .allow_origins(cors_origins)
-        .allow_credentials(true)
-        .allow_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"])
-        .allow_headers(vec!["Content-Type", "Authorization", TIMEOUT_HEADER])
-        .expose_headers(vec!["Accept"])
-        .max_age(SETTINGS.rustmailer_cors_max_age);
-
     let route = Route::new()
         .nest("/api-docs/swagger", swagger)
         .nest("/api-docs/redoc", redoc)
