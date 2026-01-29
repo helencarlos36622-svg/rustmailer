@@ -18,7 +18,7 @@ COPY license.html /opt/rustmailer/
 RUN chmod +x /opt/rustmailer/rustmailer
 
 # Install ca-certificates to ensure HTTPS certificate verification works correctly
-RUN apt update && apt install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt update && apt install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Create data directory
 RUN mkdir -p /data
