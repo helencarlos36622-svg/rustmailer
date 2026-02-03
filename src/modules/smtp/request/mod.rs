@@ -5,23 +5,30 @@
 use crate::base64_decode_url_safe;
 use crate::encode_mailbox_name;
 use crate::generate_token;
+use crate::modules::account::entity::MailerType;
 use crate::modules::cache::disk::DISK_CACHE;
 use crate::modules::cache::imap::mailbox::EmailFlag;
 use crate::modules::cache::imap::mailbox::EnvelopeFlag;
 use crate::modules::cache::imap::mailbox::MailBox;
 use crate::modules::cache::imap::migration::EmailEnvelopeV3;
+use crate::modules::cache::model::Envelope;
 use crate::modules::cache::vendor::gmail::sync::client::GmailClient;
 use crate::modules::cache::vendor::gmail::sync::envelope::GmailEnvelope;
 use crate::modules::cache::vendor::gmail::sync::labels::GmailLabels;
+use crate::modules::cache::vendor::outlook::sync::client::OutlookClient;
+use crate::modules::cache::vendor::outlook::sync::envelope::OutlookEnvelope;
+use crate::modules::cache::vendor::outlook::sync::folders::OutlookFolder;
 use crate::modules::common::Addr;
 use crate::modules::context::executors::RUST_MAIL_CONTEXT;
 use crate::modules::envelope::extractor::extract_envelope;
 use crate::modules::error::code::ErrorCode;
 use crate::modules::message::content::retrieve_email_content;
+use crate::modules::message::content::AttachmentInfo;
 use crate::modules::message::content::FullMessageContent;
 use crate::modules::message::content::MessageContentRequest;
 use crate::modules::smtp::template::preview::EmailPreview;
 use crate::modules::tasks::queue::RustMailerTaskQueue;
+use crate::modules::utils::envelope_hash_from_id;
 use crate::utc_now;
 use crate::validate_email;
 use crate::{
@@ -46,6 +53,7 @@ use std::borrow::Cow;
 use task::AnswerEmail;
 use task::SmtpTask;
 use tokio::io::AsyncReadExt;
+use tracing::warn;
 
 pub mod builder;
 pub mod forward;
@@ -118,7 +126,13 @@ pub struct AttachmentPayload {
     /// This optional field refers to an attachment that exists in a different email
     /// within the same mailbox account. It is used when the current message does not
     /// contain the attachment content directly in `base64_content`, but instead links
-    /// to an existing attachment (e.g., by message ID and section index).
+    /// to an existing attachment (e.g. by message UID and MIME section index).
+    ///
+    /// ## Notes
+    /// - This feature is currently **IMAP-only**.
+    /// - Gmail API and Microsoft Graph API do **not** support cross-message attachment
+    ///   references at this time.
+    /// - For non-IMAP accounts, attachment content must be provided explicitly.
     pub attachment_ref: Option<AttachmentRef>,
 }
 
@@ -163,8 +177,23 @@ impl MailAttachment {
         }
 
         if let Some(attachment_ref) = &self.payload.attachment_ref {
-            return Self::retrieve_and_decode_attachment(attachment_ref, &self.mime_type, account)
-                .await;
+            if matches!(account.mailer_type, MailerType::ImapSmtp) {
+                let request = AttachmentRequest {
+                    id: attachment_ref.uid.to_string(),
+                    mailbox: Some(attachment_ref.mailbox_name.clone()),
+                    attachment: Some(attachment_ref.attachment_data.clone()),
+                    attachment_info: None,
+                    filename: None,
+                    attachment_id: None,
+                };
+                return Self::retrieve_and_decode_attachment(request, &self.mime_type, account)
+                    .await;
+            } else {
+                warn!(
+                    "AttachmentRef is only supported for IMAP accounts. \
+                    Gmail and Microsoft Graph API do not support this feature yet."
+                );
+            }
         }
 
         Err(raise_error!(
@@ -205,22 +234,11 @@ impl MailAttachment {
     }
 
     async fn retrieve_and_decode_attachment(
-        attachment_ref: &AttachmentRef,
+        request: AttachmentRequest,
         mime_type: &str,
         account: &AccountModel,
     ) -> RustMailerResult<BodyPart<'static>> {
-        let (mut reader, _) = retrieve_email_attachment(
-            account.id,
-            AttachmentRequest {
-                id: attachment_ref.uid.to_string(),
-                mailbox: Some(attachment_ref.mailbox_name.clone()),
-                attachment: Some(attachment_ref.attachment_data.clone()),
-                attachment_info: None,
-                filename: None,
-                attachment_id: None,
-            },
-        )
-        .await?;
+        let (mut reader, _) = retrieve_email_attachment(account.id, request).await?;
 
         let mut buffer = Vec::new();
         reader.read_to_end(&mut buffer).await.map_err(|e| {
@@ -607,7 +625,7 @@ impl EmailHandler {
 
     pub async fn retrieve_message_content(
         account: &AccountModel,
-        envelope: &EmailEnvelopeV3,
+        envelope: &Envelope,
     ) -> RustMailerResult<Option<FullMessageContent>> {
         let body_meta = match &envelope.body_meta {
             Some(meta) => meta,
@@ -621,7 +639,7 @@ impl EmailHandler {
         });
         let request = MessageContentRequest {
             mailbox: Some(envelope.mailbox_name.clone()),
-            id: envelope.uid.to_string(),
+            id: envelope.id.clone(),
             max_length: None,
             sections: Some(body_meta.clone()),
             inline: inline_attachments,
@@ -629,6 +647,24 @@ impl EmailHandler {
         retrieve_email_content(account.id, request, false)
             .await
             .map(Some)
+    }
+
+    pub async fn get_outlook_envelope(
+        account: &AccountModel,
+        mailbox_name: &str,
+        mid: &str,
+    ) -> RustMailerResult<OutlookEnvelope> {
+        if !account.minimal_sync() {
+            if let Ok(folder) = OutlookFolder::get_by_name(account.id, mailbox_name).await {
+                let envelope =
+                    OutlookEnvelope::get(envelope_hash_from_id(account.id, folder.id, mid)).await?;
+                if let Some(envelope) = envelope {
+                    return Ok(envelope);
+                }
+            }
+        }
+        let message = OutlookClient::get_message(account.id, account.use_proxy, mid).await?;
+        Ok(message.try_into()?)
     }
 
     pub async fn get_gmail_envelope(
@@ -726,41 +762,107 @@ impl EmailHandler {
     }
 
     async fn add_attachment(
-        builder: MessageBuilder<'static>,
-        attachment: &ImapAttachment,
-        envelope: &EmailEnvelopeV3,
-        inline: bool,
+        mut builder: MessageBuilder<'static>,
+        imap_attachments: Option<&[ImapAttachment]>,
+        attachments: Option<&[AttachmentInfo]>,
+        envelope: &Envelope,
         account: &AccountModel,
     ) -> RustMailerResult<MessageBuilder<'static>> {
-        let attachment_ref = AttachmentRef {
-            mailbox_name: envelope.mailbox_name.clone(),
-            uid: envelope.uid,
-            attachment_data: attachment.clone(),
-        };
-        let mime_type = from_ext(&attachment.file_type)
-            .first_or_octet_stream()
-            .to_string();
-        let content =
-            MailAttachment::retrieve_and_decode_attachment(&attachment_ref, &mime_type, account)
-                .await?;
+        match account.mailer_type {
+            MailerType::ImapSmtp => {
+                if let Some(attachments) = imap_attachments {
+                    for attachment in attachments {
+                        let uid = envelope.id.parse::<u32>().ok().ok_or_else(|| {
+                            raise_error!(
+                                "Invalid IMAP UID: `id` must be a numeric string".into(),
+                                ErrorCode::InvalidParameter
+                            )
+                        })?;
+                        let attachment_ref = AttachmentRef {
+                            mailbox_name: envelope.mailbox_name.clone(),
+                            uid,
+                            attachment_data: attachment.clone(),
+                        };
+                        let mime_type = from_ext(&attachment.file_type)
+                            .first_or_octet_stream()
+                            .to_string();
+                        let request = AttachmentRequest {
+                            id: attachment_ref.uid.to_string(),
+                            mailbox: Some(attachment_ref.mailbox_name.clone()),
+                            attachment: Some(attachment_ref.attachment_data.clone()),
+                            attachment_info: None,
+                            filename: None,
+                            attachment_id: None,
+                        };
+                        let content = MailAttachment::retrieve_and_decode_attachment(
+                            request, &mime_type, account,
+                        )
+                        .await?;
 
-        Ok(if inline {
-            builder.inline(
-                mime_type,
-                attachment.content_id.clone().ok_or_else(|| {
-                    raise_error!("Missing content_id".into(), ErrorCode::ImapUnexpectedResult)
-                })?,
-                content,
-            )
-        } else {
-            builder.attachment(
-                mime_type,
-                attachment.filename.clone().ok_or_else(|| {
-                    raise_error!("Missing filename".into(), ErrorCode::ImapUnexpectedResult)
-                })?,
-                content,
-            )
-        })
+                        if attachment.inline {
+                            builder = builder.inline(
+                                mime_type,
+                                attachment.content_id.clone().ok_or_else(|| {
+                                    raise_error!(
+                                        "Missing content_id".into(),
+                                        ErrorCode::ImapUnexpectedResult
+                                    )
+                                })?,
+                                content,
+                            );
+                        } else {
+                            builder = builder.attachment(
+                                mime_type,
+                                attachment.filename.clone().ok_or_else(|| {
+                                    raise_error!(
+                                        "Missing filename".into(),
+                                        ErrorCode::ImapUnexpectedResult
+                                    )
+                                })?,
+                                content,
+                            );
+                        }
+                    }
+                }
+            }
+            _ => {
+                if let Some(attachments) = attachments {
+                    for attachment in attachments {
+                        let mime_type = attachment.file_type.clone();
+                        let request = AttachmentRequest {
+                            id: envelope.id.clone(),
+                            mailbox: Some(envelope.mailbox_name.clone()),
+                            attachment: None,
+                            attachment_info: Some(attachment.clone()),
+                            filename: None,
+                            attachment_id: Some(attachment.id.clone()),
+                        };
+                        let content = MailAttachment::retrieve_and_decode_attachment(
+                            request, &mime_type, account,
+                        )
+                        .await?;
+
+                        if attachment.inline {
+                            builder = builder.inline(
+                                mime_type,
+                                attachment.content_id.clone().ok_or_else(|| {
+                                    raise_error!(
+                                        "Missing content_id".into(),
+                                        ErrorCode::ImapUnexpectedResult
+                                    )
+                                })?,
+                                content,
+                            );
+                        } else {
+                            builder =
+                                builder.attachment(mime_type, attachment.filename.clone(), content);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(builder)
     }
 
     pub fn insert_preview(preview: &Option<String>, html: String) -> String {

@@ -1852,7 +1852,7 @@ message ReplyEmailRequest {
   // A map of custom headers for the reply.
   map<string, HeaderValue> headers = 6;
   // If true, replies to all recipients (To, CC) of the original email.
-  bool reply_all = 7;
+  optional bool reply_all = 7;
   // A list of attachments to include in the reply.
   repeated MailAttachment attachments = 8;
   // A list of additional CC recipients for the reply.
@@ -1862,9 +1862,9 @@ message ReplyEmailRequest {
   // Optional: The timezone for date headers in the reply.
   optional string timezone = 11;
   // If true, includes the original message content in the reply.
-  bool include_original = 12;
+  optional bool include_original = 12;
   // If true, includes all attachments from the original message in the reply.
-  bool include_all_attachments = 13;
+  optional bool include_all_attachments = 13;
   // Controls the sending process, including retry policies and DSN.
   SendControl send_control = 14;
 }
@@ -1897,9 +1897,9 @@ message ForwardEmailRequest {
   // A list of attachments to include in the forwarded email.
   repeated MailAttachment attachments = 11;
   // If true, includes the original message content in the forwarded email.
-  bool include_original = 12;
+  optional bool include_original = 12;
   // If true, includes all attachments from the original message in the forwarded email.
-  bool include_all_attachments = 13;
+  optional bool include_all_attachments = 13;
   // Controls the sending process, including retry policies and DSN.
   SendControl send_control = 14;
 }

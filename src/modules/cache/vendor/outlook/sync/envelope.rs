@@ -351,7 +351,7 @@ impl OutlookEnvelope {
 impl TryFrom<Message> for OutlookEnvelope {
     type Error = RustMailerError;
 
-    fn try_from(msg: Message) -> Result<Self, Self::Error> {
+    fn  try_from(msg: Message) -> Result<Self, Self::Error> {
         fn parse_datetime(dt: &Option<String>) -> RustMailerResult<Option<i64>> {
             dt.as_ref()
                 .map(|s| {

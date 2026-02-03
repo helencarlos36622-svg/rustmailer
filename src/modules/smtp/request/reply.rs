@@ -5,7 +5,7 @@
 use crate::{
     modules::{
         account::{entity::MailerType, migration::AccountModel},
-        cache::{imap::migration::EmailEnvelopeV3, vendor::gmail::sync::envelope::GmailEnvelope},
+        cache::{model::Envelope, vendor::gmail::sync::envelope::GmailEnvelope},
         error::{code::ErrorCode, RustMailerResult},
         smtp::{
             composer::BodyComposer,
@@ -36,7 +36,7 @@ pub struct ReplyEmailRequest {
     ///
     /// - For IMAP accounts, this is the UID converted to a string. It must be a valid numeric string
     ///   that can be parsed back to a `u32`.
-    /// - For Gmail API accounts, this is the message ID (`mid`) returned by the API.
+    /// - For Gmail/Graph API accounts, this is the message ID (`mid`) returned by the API.
     pub id: String,
     /// The plain text body of the reply email.
     ///
@@ -57,7 +57,7 @@ pub struct ReplyEmailRequest {
     /// Whether to reply to all original recipients (Reply-All).
     ///
     /// If true, the reply will be sent to all original recipients, including Cc.
-    pub reply_all: bool,
+    pub reply_all: Option<bool>,
     /// A list of attachments to include in the reply.
     ///
     /// This optional field allows adding new file attachments to the reply email.
@@ -73,11 +73,11 @@ pub struct ReplyEmailRequest {
     /// Whether to include the original message in the reply body.
     ///
     /// If true, the original message content will be quoted and included in the reply.
-    pub include_original: bool,
+    pub include_original: Option<bool>,
     /// Whether to include all original attachments in the reply.
     ///
     /// If true, all attachments from the original message will be included in the reply.
-    pub include_all_attachments: bool,
+    pub include_all_attachments: Option<bool>,
     /// The sender's timezone (e.g., "Asia/Shanghai").
     ///
     /// This optional field may be used for formatting date/time in the reply body.
@@ -134,7 +134,7 @@ impl EmailBuilder for ReplyEmailRequest {
         let account = &AccountModel::get(account_id).await?;
         self.validate().await?;
 
-        let (envelope, answer_email) = match account.mailer_type {
+        let (envelope, answer_email): (Envelope, Option<AnswerEmail>) = match account.mailer_type {
             MailerType::ImapSmtp => {
                 let uid = self.id.parse::<u32>().ok().ok_or_else(|| {
                     raise_error!(
@@ -144,7 +144,7 @@ impl EmailBuilder for ReplyEmailRequest {
                 })?;
                 let envelope = EmailHandler::get_envelope(account, &self.mailbox_name, uid).await?;
                 (
-                    envelope,
+                    envelope.into(),
                     Some(AnswerEmail {
                         reply: true,
                         mailbox: self.mailbox_name.clone(),
@@ -155,9 +155,14 @@ impl EmailBuilder for ReplyEmailRequest {
             MailerType::GmailApi => {
                 let envelope =
                     EmailHandler::get_gmail_envelope(account, &self.mailbox_name, &self.id).await?;
-                (envelope, None)
+                (envelope.into(), None)
             }
-            MailerType::GraphApi => todo!(),
+            MailerType::GraphApi => {
+                let envelope =
+                    EmailHandler::get_outlook_envelope(account, &self.mailbox_name, &self.id)
+                        .await?;
+                (envelope.into(), None)
+            }
         };
 
         let from = Address::new_address(
@@ -218,10 +223,10 @@ impl ReplyEmailRequest {
     fn apply_recipient_headers(
         &self,
         mut builder: MessageBuilder<'static>,
-        envelope: &EmailEnvelopeV3,
+        envelope: &Envelope,
         message_id: &str,
     ) -> RustMailerResult<MessageBuilder<'static>> {
-        if self.reply_all {
+        if self.reply_all.unwrap_or_default() {
             if let Some(cc) = &envelope.cc {
                 builder = builder.cc(Address::from(cc.clone()));
             }
@@ -255,12 +260,12 @@ impl ReplyEmailRequest {
     async fn apply_content(
         &self,
         mut builder: MessageBuilder<'static>,
-        envelope: &EmailEnvelopeV3,
+        envelope: &Envelope,
         account: &AccountModel,
     ) -> RustMailerResult<MessageBuilder<'static>> {
         let timezone = self.timezone.as_deref().unwrap_or("UTC");
 
-        if self.include_original {
+        if self.include_original.unwrap_or_default() {
             if let Some(content) = EmailHandler::retrieve_message_content(account, envelope).await?
             {
                 if let Some(original_html) = content.html() {
@@ -293,19 +298,19 @@ impl ReplyEmailRequest {
                 } else if let Some(text) = &self.text {
                     builder = builder.text_body(text.clone());
                 }
+
+                if self.include_all_attachments.unwrap_or_default() {
+                    builder = EmailHandler::add_attachment(
+                        builder,
+                        envelope.attachments.as_deref(),
+                        content.attachments.as_deref(),
+                        envelope,
+                        account,
+                    )
+                    .await?;
+                }
             } else {
                 builder = self.apply_fallback_content(builder)?;
-            }
-
-            if let Some(attachments) = envelope.attachments.as_ref() {
-                if self.include_all_attachments {
-                    for attachment in attachments.iter().filter(|att| !att.inline) {
-                        builder = EmailHandler::add_attachment(
-                            builder, attachment, envelope, false, account,
-                        )
-                        .await?;
-                    }
-                }
             }
         } else {
             builder = self.apply_fallback_content(builder)?;
@@ -369,7 +374,7 @@ impl ReplyEmailRequest {
 
 pub fn apply_references(
     builder: MessageBuilder<'static>,
-    envelope: &EmailEnvelopeV3,
+    envelope: &Envelope,
 ) -> RustMailerResult<MessageBuilder<'static>> {
     let builder = if let Some(message_id) = &envelope.message_id {
         builder.in_reply_to(message_id.clone())

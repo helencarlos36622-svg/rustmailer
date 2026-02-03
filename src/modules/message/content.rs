@@ -43,7 +43,7 @@ pub struct MessageContentRequest {
     ///
     /// - For IMAP accounts, this is the UID converted to a string. It must be a valid numeric string
     ///   that can be parsed back to a `u32`.
-    /// - For Gmail API accounts, this is the message ID (`mid`) returned by the API.
+    /// - For Gmail/Graph API accounts, this is the message ID (`mid`) returned by the API.
     pub id: String,
     /// Optional maximum length to retrieve for text parts (useful for large messages)  
     /// - Supported by both IMAP/SMTP and Gmail API  

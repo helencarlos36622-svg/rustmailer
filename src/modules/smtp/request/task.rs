@@ -8,6 +8,7 @@ use std::time::Instant;
 use crate::modules::account::entity::MailerType;
 use crate::modules::cache::disk::DISK_CACHE;
 use crate::modules::cache::vendor::gmail::sync::client::GmailClient;
+use crate::modules::cache::vendor::outlook::sync::client::OutlookClient;
 use crate::modules::error::code::ErrorCode;
 use crate::modules::error::RustMailerResult;
 use crate::modules::hook::channel::{Event, EVENT_CHANNEL};
@@ -20,7 +21,7 @@ use crate::modules::metrics::{
     RUSTMAILER_EMAIL_SENT_TOTAL, SUCCESS,
 };
 use crate::modules::smtp::executor::SmtpExecutor;
-use crate::{base64_encode_url_safe, raise_error};
+use crate::{base64_encode, base64_encode_url_safe, raise_error};
 
 use crate::modules::scheduler::{
     retry::{RetryPolicy, RetryStrategy},
@@ -315,14 +316,28 @@ impl Task for SmtpTask {
                             .await;
                     let raw_encoded = base64_encode_url_safe!(&message.body);
                     match gmail_send_email(self.account_id, account.use_proxy, raw_encoded).await {
-                        Ok(()) => self.handle_email_send_success(start, body.len()).await,
+                        Ok(_) => self.handle_email_send_success(start, body.len()).await,
                         Err(e) => {
                             Self::record_send_failure_metrics(start);
                             Err(e)
                         }
                     }
                 }
-                MailerType::GraphApi => todo!(),
+                MailerType::GraphApi => {
+                    let envelope_opt = self.control.as_ref().and_then(|c| c.envelope.as_ref());
+                    let message =
+                        Self::build_message(envelope_opt, &body, self.from.clone(), &self.to, None)
+                            .await;
+                    let raw_encoded = base64_encode!(&message.body);
+                    match outlook_send_email(self.account_id, account.use_proxy, raw_encoded).await
+                    {
+                        Ok(_) => self.handle_email_send_success(start, body.len()).await,
+                        Err(e) => {
+                            Self::record_send_failure_metrics(start);
+                            Err(e)
+                        }
+                    }
+                }
             }
         })
     }
@@ -339,4 +354,12 @@ async fn gmail_send_email(
 ) -> RustMailerResult<()> {
     GmailClient::send_email(account_id, use_proxy, raw_encoded).await?;
     Ok(())
+}
+
+async fn outlook_send_email(
+    account_id: u64,
+    use_proxy: Option<u64>,
+    raw_encoded: String,
+) -> RustMailerResult<()> {
+    OutlookClient::send_email(account_id, use_proxy, raw_encoded).await
 }

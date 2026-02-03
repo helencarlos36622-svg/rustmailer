@@ -18,6 +18,7 @@ use crate::{
         account::{entity::MailerType, migration::AccountModel},
         cache::{
             imap::mailbox::AttributeEnum,
+            model::Envelope,
             vendor::{
                 gmail::sync::{client::GmailClient, envelope::GmailEnvelope},
                 outlook::sync::client::OutlookClient,
@@ -145,12 +146,13 @@ impl AppendReplyToDraftRequest {
                 )
             })?;
 
-        let envelope = EmailHandler::get_envelope(
+        let envelope: Envelope = EmailHandler::get_envelope(
             account,
             self.mailbox_name.as_deref().unwrap(),
             self.id.parse::<u32>().ok().unwrap(),
         )
-        .await?;
+        .await?
+        .into();
 
         let from = Address::new_address(
             account.name.as_ref().map(|n| Cow::Owned(n.to_string())),

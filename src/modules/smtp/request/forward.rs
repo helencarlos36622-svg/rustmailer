@@ -3,7 +3,7 @@
 // Unauthorized copying, modification, or distribution is prohibited.
 
 use crate::modules::account::entity::MailerType;
-use crate::modules::cache::imap::migration::EmailEnvelopeV3;
+use crate::modules::cache::model::Envelope;
 use crate::modules::error::code::ErrorCode;
 use crate::modules::smtp::request::builder::EmailBuilder;
 use crate::modules::smtp::request::headers::HeaderValue;
@@ -90,12 +90,12 @@ pub struct ForwardEmailRequest {
     /// Whether to include the original message in the forwarded email body.
     ///
     /// If true, the full original message content will be included in the body.
-    pub include_original: bool,
+    pub include_original: Option<bool>,
 
     /// Whether to include all original attachments in the forwarded email.
     ///
     /// If true, all attachments from the original message will be forwarded as well.
-    pub include_all_attachments: bool,
+    pub include_all_attachments: Option<bool>,
 
     /// Configuration options for controlling the email sending process.
     ///
@@ -157,7 +157,7 @@ impl EmailBuilder for ForwardEmailRequest {
         self.validate().await?;
         let account = &AccountModel::get(account_id).await?;
 
-        let (envelope, answer_email) = match account.mailer_type {
+        let (envelope, answer_email): (Envelope, Option<AnswerEmail>) = match account.mailer_type {
             MailerType::ImapSmtp => {
                 let uid = self.id.parse::<u32>().ok().ok_or_else(|| {
                     raise_error!(
@@ -167,7 +167,7 @@ impl EmailBuilder for ForwardEmailRequest {
                 })?;
                 let envelope = EmailHandler::get_envelope(account, &self.mailbox_name, uid).await?;
                 (
-                    envelope,
+                    envelope.into(),
                     Some(AnswerEmail {
                         reply: true,
                         mailbox: self.mailbox_name.clone(),
@@ -178,9 +178,14 @@ impl EmailBuilder for ForwardEmailRequest {
             MailerType::GmailApi => {
                 let envelope =
                     EmailHandler::get_gmail_envelope(account, &self.mailbox_name, &self.id).await?;
-                (envelope, None)
+                (envelope.into(), None)
             }
-            MailerType::GraphApi => todo!(),
+            MailerType::GraphApi => {
+                let envelope =
+                    EmailHandler::get_outlook_envelope(account, &self.mailbox_name, &self.id)
+                        .await?;
+                (envelope.into(), None)
+            }
         };
         let from = Address::new_address(
             account.name.as_ref().map(|n| Cow::Owned(n.to_string())),
@@ -253,7 +258,7 @@ impl ForwardEmailRequest {
     fn apply_references(
         &self,
         builder: MessageBuilder<'static>,
-        envelope: &EmailEnvelopeV3,
+        envelope: &Envelope,
     ) -> RustMailerResult<MessageBuilder<'static>> {
         let mut references = envelope.references.clone().unwrap_or_default();
         if let Some(message_id) = &envelope.message_id {
@@ -267,12 +272,12 @@ impl ForwardEmailRequest {
     async fn apply_content(
         &self,
         mut builder: MessageBuilder<'static>,
-        envelope: &EmailEnvelopeV3,
+        envelope: &Envelope,
         account: &AccountModel,
     ) -> RustMailerResult<MessageBuilder<'static>> {
         let timezone = self.timezone.as_deref().unwrap_or("UTC");
 
-        if self.include_original {
+        if self.include_original.unwrap_or_default() {
             if let Some(content) = EmailHandler::retrieve_message_content(account, envelope).await?
             {
                 if let Some(original_html) = content.html() {
@@ -305,20 +310,32 @@ impl ForwardEmailRequest {
                 } else if let Some(text) = &self.text {
                     builder = builder.text_body(text.clone());
                 }
+
+                //include_all_attachments
+                if self.include_all_attachments.unwrap_or_default() {
+                    builder = EmailHandler::add_attachment(
+                        builder,
+                        envelope.attachments.as_deref(),
+                        content.attachments.as_deref(),
+                        envelope,
+                        account,
+                    )
+                    .await?;
+                }
             } else {
                 builder = self.apply_fallback_content(builder)?;
             }
 
-            if let Some(attachments) = envelope.attachments.as_ref() {
-                if self.include_all_attachments {
-                    for attachment in attachments.iter().filter(|att| !att.inline) {
-                        builder = EmailHandler::add_attachment(
-                            builder, attachment, envelope, false, account,
-                        )
-                        .await?;
-                    }
-                }
-            }
+            // if let Some(attachments) = envelope.attachments.as_ref() {
+            //     if self.include_all_attachments {
+            //         for attachment in attachments.iter().filter(|att| !att.inline) {
+            //             builder = EmailHandler::add_attachment(
+            //                 builder, attachment, envelope, false, account,
+            //             )
+            //             .await?;
+            //         }
+            //     }
+            // }
         } else {
             builder = self.apply_fallback_content(builder)?;
         }

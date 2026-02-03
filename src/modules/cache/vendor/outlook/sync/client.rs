@@ -390,6 +390,21 @@ impl OutlookClient {
         })
     }
 
+
+    pub async fn send_email(
+        account_id: u64,
+        use_proxy: Option<u64>,
+        message_base64: String,
+    ) -> RustMailerResult<()> {
+        let url = "https://graph.microsoft.com/v1.0/me/sendMail";
+        let client = HttpClient::new(use_proxy).await?;
+        let access_token = Self::get_access_token(account_id).await?;
+        client
+            .post_text::<()>(url, &access_token, message_base64, false)
+            .await?;
+       Ok(())
+    }
+
     pub async fn batch_get_categories(
         account_id: u64,
         use_proxy: Option<u64>,

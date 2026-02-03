@@ -350,6 +350,58 @@ impl HttpClient {
         }
     }
 
+    pub async fn post_text<T: Serialize>(
+        &self,
+        url: &str,
+        access_token: &str,
+        body: String,
+        expect_json_response: bool,
+    ) -> RustMailerResult<serde_json::Value> {
+        let mut builder = self
+            .client
+            .post(url)
+            .header(AUTHORIZATION, format!("Bearer {}", access_token))
+            .header(CONTENT_TYPE, "text/plain");
+        builder = builder.body(body);
+
+        let res = builder.send().await.map_err(|e| {
+            raise_error!(
+                format!("Request failed: {:#?}", e),
+                ErrorCode::InternalError
+            )
+        })?;
+
+        if res.status().is_success() {
+            if expect_json_response {
+                let json: serde_json::Value = res.json().await.map_err(|e| {
+                    raise_error!(
+                        format!("Failed to parse response: {:#?}", e),
+                        ErrorCode::InternalError
+                    )
+                })?;
+                Ok(json)
+            } else {
+                Ok(serde_json::Value::Null)
+            }
+        } else {
+            let status = res.status();
+            let text = res.text().await.map_err(|e| {
+                raise_error!(
+                    format!("Failed to read error response: {:#?}", e),
+                    ErrorCode::InternalError
+                )
+            })?;
+            // Return the error with status and response text for more context
+            Err(raise_error!(
+                format!(
+                    "API call to {} failed with status {}: {}",
+                    url, status, text
+                ),
+                ErrorCode::ApiCallFailed
+            ))
+        }
+    }
+
     /// Wrapper around the Gmail API `POST` request.
     pub async fn delete(&self, url: &str, access_token: &str) -> RustMailerResult<()> {
         let res = self

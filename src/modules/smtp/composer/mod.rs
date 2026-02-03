@@ -2,7 +2,7 @@
 // Licensed under RustMailer License Agreement v1.0
 // Unauthorized copying, modification, or distribution is prohibited.
 
-use crate::modules::cache::imap::migration::EmailEnvelopeV3;
+use crate::modules::cache::model::Envelope;
 use scraper::{Html, Selector};
 use time::{macros::format_description, OffsetDateTime};
 use time_tz::timezones;
@@ -50,7 +50,7 @@ impl BodyComposer {
     pub fn generate_html(
         original_html: &str,
         reply_content: &str,
-        envelope: &EmailEnvelopeV3,
+        envelope: &Envelope,
         timezone_name: &str,
         reply: bool,
     ) -> String {
@@ -161,7 +161,7 @@ impl BodyComposer {
     pub fn generate_text(
         original_text: &str,
         reply_content: &str,
-        envelope: &EmailEnvelopeV3,
+        envelope: &Envelope,
         timezone_name: &str,
         reply: bool,
     ) -> String {
@@ -337,7 +337,7 @@ mod tests {
         let result = BodyComposer::generate_html(
             original_html,
             reply_content,
-            &envelope,
+            &envelope.into(),
             "Asia/Shanghai",
             true,
         );
@@ -386,7 +386,7 @@ mod tests {
         let result = BodyComposer::generate_text(
             original_text,
             reply_content,
-            &envelope,
+            &envelope.into(),
             "Asia/Shanghai",
             true,
         );
