@@ -10,6 +10,7 @@ use crate::modules::cache::imap::sync::flow::generate_uid_sequence_hashset;
 use crate::modules::cache::model::Envelope;
 use crate::modules::cache::vendor::gmail::sync::client::GmailClient;
 use crate::modules::cache::vendor::gmail::sync::envelope::GmailEnvelope;
+use crate::modules::cache::vendor::outlook::sync::envelope::OutlookEnvelope;
 use crate::modules::common::decode_page_token;
 use crate::modules::common::paginated::paginate_vec;
 use crate::modules::common::parallel::run_with_limit;
@@ -823,7 +824,8 @@ impl UnifiedSearchRequest {
                     })?
                     .into(),
                 MailerType::GmailApi => {
-                    let label_map = GmailClient::for_get_label_name(account_id, account.use_proxy).await?;
+                    let label_map =
+                        GmailClient::for_get_label_name(account_id, account.use_proxy).await?;
                     let envelope = GmailEnvelope::get(id).await?.ok_or_else(|| {
                         raise_error!(
                             format!(
@@ -834,7 +836,17 @@ impl UnifiedSearchRequest {
                     })?;
                     envelope.into_envelope(&label_map)
                 }
-                MailerType::GraphApi => todo!(),
+                MailerType::GraphApi => {
+                    let envelope = OutlookEnvelope::get(id).await?.ok_or_else(|| {
+                        raise_error!(
+                            format!(
+                                "Failed to get OutlookEnvelope for hash {id} in search operation"
+                            ),
+                            ErrorCode::InternalError
+                        )
+                    })?;
+                    envelope.into()
+                }
             };
             items.push(envelope);
         }
