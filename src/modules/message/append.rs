@@ -61,12 +61,12 @@ pub struct AppendReplyToDraftRequest {
     /// The plain text body of the reply email.
     ///
     /// This field is optional and can be used to provide plain text content.
-    #[oai(validator(min_length = "1", max_length = "10000"))]
+    #[oai(validator(min_length = "1"))]
     pub text: Option<String>,
     /// The HTML body of the reply email.
     ///
     /// This field is optional and can be used to provide HTML content.
-    #[oai(validator(min_length = "1", max_length = "50000"))]
+    #[oai(validator(min_length = "1"))]
     pub html: Option<String>,
     /// Indicates whether the reply should be created as “Reply All”.
     ///
