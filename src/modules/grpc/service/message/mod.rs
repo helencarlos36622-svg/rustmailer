@@ -8,7 +8,7 @@ use crate::modules::common::auth::ClientContext;
 use crate::modules::error::code::ErrorCode;
 use crate::modules::grpc::auth::require_account_access;
 use crate::modules::grpc::service::rustmailer_grpc::{
-    AppendReplyToDraftRequest, ByteResponse, CursorDataPage, EmailEnvelopeList,
+    AppendReplyToDraftRequest, BatchTagRequest, ByteResponse, CursorDataPage, EmailEnvelopeList,
     GetThreadMessagesRequest, ListThreadsRequest, MessageContentResponse, PagedMessages,
     UnifiedSearchRequest,
 };
@@ -29,6 +29,9 @@ use crate::modules::message::list::{
 };
 use crate::modules::message::search::payload::MessageSearchRequest as RustMailerMessageSearchRequest;
 use crate::modules::message::search::payload::UnifiedSearchRequest as RustMailerUnifiedSearchRequest;
+use crate::modules::message::tags::{
+    tag_messages_impl, BatchTagRequest as RustMailerBatchTagRequest,
+};
 use crate::modules::message::transfer::{transfer_messages, MessageTransfer};
 use crate::raise_error;
 use poem_grpc::{Request, Response, Status};
@@ -256,5 +259,18 @@ impl MessageService for RustMailerMessageService {
         let request: RustMailerAppendReplyToDraftRequest = req.into();
         request.append_reply_to_draft(account_id).await?;
         Ok(Response::new(Empty::default()))
+    }
+
+    async fn tag_messages(
+        &self,
+        request: Request<BatchTagRequest>,
+    ) -> Result<Response<Empty>, Status> {
+        let req = require_account_access(request, |r| r.account_id)?;
+        let account_id = req.account_id;
+        let request: RustMailerBatchTagRequest = req
+            .try_into()
+            .map_err(|e: &'static str| raise_error!(e.to_string(), ErrorCode::InvalidParameter))?;
+        tag_messages_impl(account_id, request).await?;
+        Ok(Response::new(Empty::default())) 
     }
 }

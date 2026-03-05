@@ -1162,6 +1162,49 @@ message AppendReplyToDraftRequest {
     optional bool reply_all = 8;
 }
 
+// Represents a tag (Label/Category/Flag) and its associated color
+message TagAndColor {
+  // Name of the label, category, or IMAP custom flag
+  string name = 1;
+
+  // Predefined Outlook category presets (e.g., "preset0", "preset1")
+  // Only used for Microsoft Graph API
+  optional string graph_color = 2;
+
+  // Custom hex colors for Gmail API
+  optional LabelColor gmail_color = 3;
+}
+
+// Defines the type of operation to be performed
+enum TagAction {
+  // Adds tags to the specified messages
+  ADD = 0;
+  // Removes tags from the specified messages
+  REMOVE = 1;
+  // Overwrites the entire list of tags
+  SET = 2;
+}
+
+// The main request for batch tagging operations
+message BatchTagRequest {
+  // The ID of the email account
+  uint64 account_id = 1;
+  // A list of unique message identifiers
+  repeated string message_ids = 2;
+
+  // The list of tags/categories with their optional color info
+  repeated TagAndColor tags = 3;
+
+  // The action to perform (Add, Remove, or Set)
+  TagAction action = 4;
+
+  // Required for IMAP context (e.g., "INBOX")
+  optional string mailbox_name = 5;
+
+  // Whether to create tags if they don't exist (Gmail/Graph only)
+  optional bool auto_create_tags = 6;
+}
+
 // MessageService provides APIs for interacting with email messages.
 service MessageService {
   // Moves messages from one mailbox to another.
@@ -1190,6 +1233,14 @@ service MessageService {
   rpc UnifiedSearch(UnifiedSearchRequest) returns (PagedMessages);
   // Creates a reply draft email linked to an existing message thread.
   rpc AppendReplyToDraft(AppendReplyToDraftRequest) returns (Empty);
+  // Batch modifies the custom tags, categories, or keywords on messages.
+  // This interface is dedicated to operating on **user-defined labels** and is separate
+  // from standard system status flags (like Read/Unread).
+  // It unifies tagging across different email services:
+  // - **Gmail/Graph API:** Operates on user-defined Label IDs or Category Names.
+  // - **IMAP/SMTP:** Operates on custom IMAP Keywords (Custom Flags).
+  // **Note:** This is a high-level operation designed for user tag management.
+  rpc TagMessages(BatchTagRequest) returns (Empty);
 }
 
 // Mta represents a Mail Transfer Agent configuration.

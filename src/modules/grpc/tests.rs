@@ -11,9 +11,10 @@ use crate::{
         common::rustls::RustMailerTls,
         context::Initialize,
         grpc::service::rustmailer_grpc::{
-            AppendReplyToDraftRequest, ExternalOAuth2Request, GetThreadMessagesRequest,
-            ListMessagesRequest, ListThreadsRequest, MessageServiceClient, OAuth2ServiceClient,
-            TemplateSentTestRequest, TemplatesServiceClient, UnifiedSearchRequest,
+            AppendReplyToDraftRequest, BatchTagRequest, ExternalOAuth2Request,
+            GetThreadMessagesRequest, ListMessagesRequest, ListThreadsRequest,
+            MessageServiceClient, OAuth2ServiceClient, TagAndColor, TemplateSentTestRequest,
+            TemplatesServiceClient, UnifiedSearchRequest,
         },
     },
 };
@@ -84,7 +85,6 @@ async fn test2() {
 }
 
 #[tokio::test]
-
 async fn test3() {
     RustMailerTls::initialize().await.unwrap();
 
@@ -263,4 +263,36 @@ async fn test8() {
         format!("Bearer {}", "2mY4irNCahQXeSarHYje1P1W"),
     );
     grpc_client.append_reply_to_draft(request).await.unwrap();
+}
+
+#[tokio::test]
+async fn test9() {
+    RustMailerTls::initialize().await.unwrap();
+    let cfg = ClientConfig::builder()
+        .uri("http://localhost:16630")
+        .build()
+        .unwrap();
+    let mut grpc_client = MessageServiceClient::new(cfg);
+    grpc_client.set_accept_compressed([CompressionEncoding::GZIP]);
+    grpc_client.set_send_compressed(CompressionEncoding::GZIP);
+
+    let request = BatchTagRequest { 
+        account_id: 3815676991897752,
+        message_ids: vec!["AQMkADAwATMwMAItNzE0OC1jZTEzLTAwAi0wMAoARgAAA_KUk7xWPSBEntPHShr61lgHAOo9V4GwHndCjf0x1uoIcwUAAAIBDAAAAOo9V4GwHndCjf0x1uoIcwUAAckOKwUAAAA=".into()],
+        tags: vec![TagAndColor {
+            name: "test_name2".into(),
+            graph_color: Some("preset1".into()),
+            gmail_color: None
+        }],
+        action: 2,
+        mailbox_name: Some("INBOX".into()),
+        auto_create_tags: Some(true),
+    };
+
+    let mut request = poem_grpc::Request::new(request);
+    request.metadata_mut().insert(
+        AUTHORIZATION,
+        format!("Bearer {}", "0ZRTSl2WhTOUQYMCgSm45i1o"),
+    );
+    grpc_client.tag_messages(request).await.unwrap();
 }

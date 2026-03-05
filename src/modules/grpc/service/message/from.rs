@@ -23,6 +23,7 @@ use crate::modules::{
             Condition, Conditions, Logic, MessageSearch, MessageSearchRequest, Operator,
             UnifiedSearchRequest,
         },
+        tags::{BatchTagRequest, TagAction, TagAndColor},
         transfer::MailboxTransferRequest,
     },
     rest::response::{CursorDataPage, DataPage},
@@ -615,6 +616,42 @@ impl From<rustmailer_grpc::AppendReplyToDraftRequest> for AppendReplyToDraftRequ
             text: value.text,
             html: value.html,
             reply_all: value.reply_all,
+        }
+    }
+}
+
+impl TryFrom<rustmailer_grpc::BatchTagRequest> for BatchTagRequest {
+    type Error = &'static str;
+    fn try_from(value: rustmailer_grpc::BatchTagRequest) -> Result<Self, Self::Error> {
+        Ok(Self {
+            message_ids: value.message_ids,
+            tags: value.tags.into_iter().map(|t| t.into()).collect(),
+            action: value.action.try_into()?,
+            mailbox_name: value.mailbox_name,
+            auto_create_tags: value.auto_create_tags,
+        })
+    }
+}
+
+impl From<rustmailer_grpc::TagAndColor> for TagAndColor {
+    fn from(value: rustmailer_grpc::TagAndColor) -> Self {
+        Self {
+            name: value.name,
+            graph_color: value.graph_color,
+            gmail_color: value.gmail_color.map(|c| c.into()),
+        }
+    }
+}
+
+impl TryFrom<i32> for TagAction {
+    type Error = &'static str;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(TagAction::Add),
+            1 => Ok(TagAction::Remove),
+            2 => Ok(TagAction::Set),
+            _ => Err("Invalid value for TagAction"),
         }
     }
 }
